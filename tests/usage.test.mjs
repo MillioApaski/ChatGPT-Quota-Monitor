@@ -96,3 +96,10 @@ test('only mounts within recognized Work panel; regular chat must not fetch quot
   assert.match(source, /if \(root\.parentElement !== panel\) panel\.appendChild\(root\)/);
   assert.match(source, /observer\.observe\(document\.body, \{ childList: true, subtree: true \}\)/);
 });
+
+
+test('quota section keeps native Work sidebar content gutters', () => {
+  assert.match(source, /\.card\s*\{[^}]*padding:\s*12px 16px 14px/);
+  assert.match(source, /border-top:\s*1px solid var\(--line\)/);
+  assert.match(source, /\.body\s*\{\s*padding:\s*0;/);
+});
