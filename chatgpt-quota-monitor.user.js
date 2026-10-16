@@ -23,7 +23,7 @@
   const CONFIG = Object.freeze({
     refreshVisibleMs: 60_000,
     retryMs: 120_000,
-    scanThrottleMs: 200,
+    scanThrottleMs: 450,
     storageKey: 'chatgpt-work-quota-docked-v1',
   });
 
@@ -338,6 +338,17 @@
   // 不根据聊天正文里的“Work”字样判断，避免普通聊天误触发。
   function locateWorkPanel() {
     if (!document.body) return null;
+    // Work 正在流式输出时 DOM 可能频繁变化；优先复用仍有效的面板，避免全页面扫描。
+    if (state.panel?.isConnected) {
+      const rect = state.panel.getBoundingClientRect();
+      const labels = state.panel.textContent || '';
+      if (rect.width >= 210 && rect.left > window.innerWidth * 0.5 &&
+          rect.right >= window.innerWidth - 120 &&
+          rect.top < window.innerHeight && rect.bottom > 0 &&
+          /输出|Outputs?/.test(labels) && /来源|Sources?/.test(labels)) {
+        return state.panel;
+      }
+    }
     const outputs = [], sources = [];
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     let node;
@@ -362,8 +373,9 @@
         let fallback = null;
         for (let el = common; el && el !== document.body; el = el.parentElement) {
           const rect = el.getBoundingClientRect();
+          // 长来源列表会增加卡片高度，不能按固定最大高度限制，否则会反复卸载/挂载。
           if (rect.width < 210 || rect.width > 540 || rect.height < 90 ||
-              rect.height > 720 || rect.right < window.innerWidth - 120) continue;
+              rect.right < window.innerWidth - 120) continue;
           if (!fallback) fallback = el;
           const style = window.getComputedStyle(el);
           const bg = style.backgroundColor;
