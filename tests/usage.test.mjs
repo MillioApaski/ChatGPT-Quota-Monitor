@@ -68,3 +68,31 @@ test('metadata matches package version and update URLs', () => {
   assert.ok(source.includes('@updateURL    ' + url));
   assert.ok(source.includes('@downloadURL  ' + url));
 });
+
+
+const panelBegin = source.indexOf('// BEGIN WORK_PANEL_PREDICATES');
+const panelEnd = source.indexOf('// END WORK_PANEL_PREDICATES');
+assert.ok(panelBegin >= 0 && panelEnd > panelBegin, 'Work panel predicates must exist');
+const { isRightWorkPanelPair } = runInNewContext(
+  source.slice(panelBegin, panelEnd) + '\n({ isRightWorkPanelPair })'
+);
+const header = (left, top) => ({ left, top, right: left + 48, width: 48, height: 24 });
+
+test('recognizes Work Output and Sources headings in the right-side panel', () => {
+  assert.equal(isRightWorkPanelPair(header(1415, 82), header(1415, 155), 1708, 896), true);
+  assert.equal(isRightWorkPanelPair(header(1000, 82), header(1000, 155), 1280, 800), true);
+});
+test('rejects normal chat text and unrelated sidebar content', () => {
+  assert.equal(isRightWorkPanelPair(header(500, 200), header(500, 270), 1708, 896), false);
+  assert.equal(isRightWorkPanelPair(header(1415, 220), header(1415, 155), 1708, 896), false);
+  assert.equal(isRightWorkPanelPair(header(1415, 82), header(1020, 155), 1708, 896), false);
+  assert.equal(isRightWorkPanelPair(header(1415, 82), header(1415, 155), 600, 800), false);
+});
+test('only mounts within recognized Work panel; regular chat must not fetch quota', () => {
+  assert.doesNotMatch(source, /position:fixed/);
+  assert.doesNotMatch(source, /document\.documentElement\.append\(root\)/);
+  assert.match(source, /if \(!panel\) \{ deactivate\(\); return; \}/);
+  assert.match(source, /if \(!state\.active \|\| document\.hidden \|\| state\.loading\) return;/);
+  assert.match(source, /if \(root\.parentElement !== panel\) panel\.appendChild\(root\)/);
+  assert.match(source, /observer\.observe\(document\.body, \{ childList: true, subtree: true \}\)/);
+});
