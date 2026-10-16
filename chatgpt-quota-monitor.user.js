@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         ChatGPT Quota Monitor (Work / Codex)
 // @namespace    https://github.com/MillioApaski/ChatGPT-Quota-Monitor
-// @version      1.0.0
+// @version      1.1.0
 // @author       ChatGPT (GPT-6)
 // @license      MIT
 // @homepageURL  https://github.com/MillioApaski/ChatGPT-Quota-Monitor
 // @supportURL   https://github.com/MillioApaski/ChatGPT-Quota-Monitor/issues
 // @updateURL    https://raw.githubusercontent.com/MillioApaski/ChatGPT-Quota-Monitor/main/chatgpt-quota-monitor.user.js
 // @downloadURL  https://raw.githubusercontent.com/MillioApaski/ChatGPT-Quota-Monitor/main/chatgpt-quota-monitor.user.js
-// @description  在 ChatGPT（含 Work）页面右下角显示 Work/Codex 共享的五小时及每周剩余额度、重置倒计时。
+// @description  仅在 ChatGPT Work 中，将 5 小时/每周剩余额度嵌入右上角「输出 / 来源」面板。
 // @match        https://chatgpt.com/*
 // @run-at       document-idle
 // @grant        none
@@ -21,44 +21,39 @@
   // 仅访问 chatgpt.com 下的两个同源接口。不会发送数据到第三方。
   // 注意：/backend-api/wham/usage 是非公开接口，OpenAI 可能修改它。
   const CONFIG = Object.freeze({
-    refreshVisibleMs: 60_000,   // 页面可见时每 60 秒更新额度
-    refreshHiddenMs: 300_000,  // 页面隐藏时每 5 分钟更新额度
+    refreshVisibleMs: 60_000,
     retryMs: 120_000,
-    widgetWidth: 284,
-    margin: 16,
-    storageKey: 'chatgpt-work-quota-widget-position-v1',
+    scanThrottleMs: 200,
+    storageKey: 'chatgpt-work-quota-docked-v1',
   });
 
   if (document.getElementById('cg-work-quota-root')) return;
 
   const root = document.createElement('div');
   root.id = 'cg-work-quota-root';
+  // 不允许在普通 ChatGPT 页面出现悬浮组件；只有定位到 Work 专属面板后才挂载。
   root.style.cssText = [
-    'position:fixed', 'right:16px', 'bottom:16px',
-    'z-index:2147483647', 'width:284px', 'max-width:calc(100vw - 32px)',
+    'display:block', 'width:100%', 'min-width:0', 'max-width:100%',
+    'grid-column:1 / -1', 'flex:none', 'box-sizing:border-box',
     'font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
-    'font-size:12px', 'line-height:1.45', 'box-sizing:border-box',
+    'font-size:12px', 'line-height:1.45',
   ].join(';');
-  document.documentElement.append(root);
   const shadow = root.attachShadow({ mode: 'closed' });
 
   const css = document.createElement('style');
   css.textContent = `
-    :host { --bg:rgba(255,255,255,.96); --fg:#20242b; --muted:#707783;
-      --line:#e6e8ec; --track:#eaedf1; --ok:#16a36c;
-      --warn:#e5a33b; --low:#e25b5b; --shadow:0 8px 30px rgba(0,0,0,.15); }
-    :host([data-theme="dark"]) { --bg:rgba(34,34,36,.96); --fg:#f4f4f5;
-      --muted:#a5a5ae; --line:#3e3e42; --track:#48484c;
-      --ok:#3dcb97; --warn:#efbd5f; --low:#f08080;
-      --shadow:0 10px 32px rgba(0,0,0,.38); }
+    :host { --fg:#20242b; --muted:#707783; --line:rgba(80,80,80,.18);
+      --track:#eaedf1; --ok:#16a36c; --warn:#e5a33b; --low:#e25b5b; }
+    :host([data-theme="dark"]) { --fg:#f4f4f5; --muted:#a5a5ae;
+      --line:rgba(255,255,255,.11); --track:#48484c;
+      --ok:#3dcb97; --warn:#efbd5f; --low:#f08080; }
     * { box-sizing:border-box; }
-    .card { width:100%; border:1px solid var(--line); border-radius:13px;
-      background:var(--bg); color:var(--fg); box-shadow:var(--shadow);
-      overflow:hidden; backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); }
-    .header { display:flex; align-items:center; justify-content:space-between; padding:10px 11px;
-      gap:8px; cursor:grab; user-select:none; touch-action:none; }
-    .header:active { cursor:grabbing; }
-    .brand { display:flex; align-items:center; gap:7px; font-size:12px; font-weight:650; white-space:nowrap; }
+    .card { width:100%; margin-top:12px; padding-top:9px; border-top:1px solid var(--line);
+      background:transparent; color:var(--fg); overflow:hidden; }
+    .header { display:flex; align-items:center; justify-content:space-between;
+      padding:0 0 10px; gap:8px; user-select:none; }
+    .brand { display:flex; align-items:center; gap:7px; min-width:0;
+      font-size:12px; font-weight:650; white-space:nowrap; }
     .dot { width:7px; height:7px; border-radius:50%; background:var(--ok); flex-shrink:0; }
     .dot.busy { background:var(--warn); }
     .dot.error { background:var(--low); }
@@ -70,7 +65,7 @@
     button[disabled] { cursor:wait; opacity:.5; }
     #collapse { font-size:18px; line-height:1; }
     #refresh { font-size:16px; line-height:1; }
-    .body { padding:0 11px 10px; }
+    .body { padding:0 0 1px; }
     .quota + .quota { margin-top:12px; }
     .line { display:flex; justify-content:space-between; align-items:center; gap:10px; }
     .label { color:var(--fg); }
@@ -85,7 +80,7 @@
       font-size:10px; color:var(--muted); display:flex; justify-content:space-between; gap:8px; }
     .footer .status { min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .card.collapsed .body { display:none; }
-    .card.collapsed .header { padding:7px 9px; }
+    .card.collapsed .header { padding-bottom:0; }
     .card.collapsed .brand { font-size:11px; }
   `;
   shadow.append(css);
@@ -94,7 +89,7 @@
   card.className = 'card';
   card.setAttribute('aria-label', 'ChatGPT Work 额度监控');
   card.innerHTML = `
-    <div class="header" id="drag-handle" title="拖动可调整位置">
+    <div class="header" id="quota-header">
       <span class="brand"><span class="dot busy" id="dot"></span><span id="brand-text">Work 额度监控</span></span>
       <span class="actions">
         <button id="refresh" type="button" title="立即刷新额度" aria-label="立即刷新额度">↻</button>
@@ -119,7 +114,7 @@
   const $ = (id) => shadow.getElementById(id);
   const nodes = {
     dot: $('dot'), brand: $('brand-text'), refresh: $('refresh'),
-    collapse: $('collapse'), handle: $('drag-handle'),
+    collapse: $('collapse'),
     fiveValue: $('five-value'), fiveBar: $('five-bar'), fiveReset: $('five-reset'),
     weekValue: $('week-value'), weekBar: $('week-bar'), weekReset: $('week-reset'),
     status: $('status'), updated: $('updated'),
@@ -140,10 +135,11 @@
   const scheme = window.matchMedia('(prefers-color-scheme: dark)');
   scheme.addEventListener?.('change', syncTheme);
 
-  // 仅保存面板位置和折叠状态；不保存访问令牌或账户资料。
+
+  // 仅保存折叠状态，不保存访问令牌或账户信息。
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem(CONFIG.storageKey) || '{}') || {}; }
-  catch { /* 禁止本地存储时使用默认布局 */ }
+  catch { /* 本地存储不可用时按默认值显示 */ }
   let collapsed = Boolean(saved.collapsed);
   function applyCollapsed() {
     card.classList.toggle('collapsed', collapsed);
@@ -151,59 +147,13 @@
     nodes.collapse.title = collapsed ? '展开' : '折叠';
   }
   applyCollapsed();
-
-  function constrainPosition() {
-    if (root.style.left === '') return;
-    const rect = root.getBoundingClientRect();
-    const left = Math.min(Math.max(CONFIG.margin, rect.left),
-      Math.max(CONFIG.margin, innerWidth - rect.width - CONFIG.margin));
-    const top = Math.min(Math.max(CONFIG.margin, rect.top),
-      Math.max(CONFIG.margin, innerHeight - rect.height - CONFIG.margin));
-    root.style.left = `${left}px`;
-    root.style.top = `${top}px`;
-  }
-  if (Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
-    root.style.right = 'auto'; root.style.bottom = 'auto';
-    root.style.left = `${saved.left}px`; root.style.top = `${saved.top}px`;
-    requestAnimationFrame(constrainPosition);
-  }
-  function saveLayout() {
-    try {
-      localStorage.setItem(CONFIG.storageKey, JSON.stringify({
-        left: root.style.left ? Number.parseFloat(root.style.left) : null,
-        top: root.style.top ? Number.parseFloat(root.style.top) : null,
-        collapsed,
-      }));
-    } catch { /* localStorage 可能被浏览器禁用 */ }
-  }
   nodes.collapse.addEventListener('click', () => {
-    collapsed = !collapsed; applyCollapsed(); constrainPosition(); saveLayout(); render();
+    collapsed = !collapsed;
+    applyCollapsed();
+    try { localStorage.setItem(CONFIG.storageKey, JSON.stringify({ collapsed })); }
+    catch { /* localStorage 可能被浏览器禁用 */ }
+    render();
   });
-  window.addEventListener('resize', () => { constrainPosition(); saveLayout(); });
-
-  // 拖动标题栏，按钮区不参与拖动。
-  let drag = null;
-  nodes.handle.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0 || e.target.closest('button')) return;
-    const r = root.getBoundingClientRect();
-    drag = { id: e.pointerId, dx: e.clientX - r.left, dy: e.clientY - r.top };
-    root.style.right = 'auto'; root.style.bottom = 'auto';
-    root.style.left = `${r.left}px`; root.style.top = `${r.top}px`;
-    nodes.handle.setPointerCapture(e.pointerId);
-  });
-  nodes.handle.addEventListener('pointermove', (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
-    root.style.left = `${e.clientX - drag.dx}px`;
-    root.style.top = `${e.clientY - drag.dy}px`;
-    constrainPosition();
-  });
-  const finishDrag = (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
-    drag = null;
-    saveLayout();
-  };
-  nodes.handle.addEventListener('pointerup', finishDrag);
-  nodes.handle.addEventListener('pointercancel', finishDrag);
 
   const state = {
     windows: { five: null, week: null },
@@ -212,6 +162,11 @@
     error: '',
     plan: '',
     timer: null,
+    active: false,
+    panel: null,
+    controller: null,
+    generation: 0,
+    scanTimer: null,
   };
 
   // BEGIN QUOTA_PARSER (kept pure for automated tests)
@@ -300,79 +255,194 @@
       : '—';
   }
 
+
   async function fetchJson(path, options = {}) {
-    const controller = new AbortController();
+    // 共用一次刷新操作的 AbortController，离开 Work 时能立即中止请求。
+    const controller = state.controller;
+    if (!controller) throw new Error('已停止额度同步');
     const timeout = setTimeout(() => controller.abort(), 15_000);
     try {
-    const resp = await fetch(path, {
-      credentials: 'same-origin',
-      signal: controller.signal,
-      cache: 'no-store',
-      headers: { Accept: 'application/json', ...(options.headers || {}) },
-    });
-    if (!resp.ok) throw new Error(`${path.includes('/usage') ? '额度' : '会话'}接口 HTTP ${resp.status}`);
-    return await resp.json();
+      const resp = await fetch(path, {
+        credentials: 'same-origin',
+        signal: controller.signal,
+        cache: 'no-store',
+        headers: { Accept: 'application/json', ...(options.headers || {}) },
+      });
+      if (!resp.ok) throw new Error(`${path.includes('/usage') ? '额度' : '会话'}接口 HTTP ${resp.status}`);
+      return await resp.json();
     } finally { clearTimeout(timeout); }
   }
   function nextRefresh(ms) {
     clearTimeout(state.timer);
-    state.timer = setTimeout(refresh, ms);
+    if (state.active && !document.hidden) state.timer = setTimeout(refresh, ms);
   }
   async function refresh() {
-    if (state.loading) return;
+    if (!state.active || document.hidden || state.loading) return;
+    const generation = state.generation;
+    state.controller = new AbortController();
     state.loading = true;
     state.error = '';
     render();
     try {
       const session = await fetchJson('/api/auth/session');
+      if (!state.active || generation !== state.generation) return;
       const token = session?.accessToken || session?.access_token ||
         session?.auth?.accessToken || session?.tokens?.access_token;
       if (typeof token !== 'string' || !token) throw new Error('会话没有可用的访问令牌，请重新登录');
       const headers = { Authorization: `Bearer ${token}` };
-      // 存在明确的账户 ID 时才附加，绝不把用户 ID 当成账户 ID。
       const accountId = session?.account_id || session?.accountId || session?.user?.account_id;
       if (typeof accountId === 'string' && accountId) headers['ChatGPT-Account-Id'] = accountId;
       const data = await fetchJson('/backend-api/wham/usage', { headers });
+      if (!state.active || generation !== state.generation) return;
       const parsed = parseUsage(data);
       state.windows = { five: parsed.five, week: parsed.week };
       state.plan = parsed.plan;
       state.lastSuccess = Date.now();
       state.error = '';
     } catch (error) {
+      if (generation !== state.generation || !state.active) return;
       state.error = error?.name === 'AbortError' ? '请求超时' :
         error instanceof Error ? error.message : '未知错误';
       if (/HTTP 401|HTTP 403|访问令牌|重新登录/.test(state.error)) {
         state.windows = { five: null, week: null };
-        state.lastSuccess = 0; // 登录状态改变时不显示旧账户数据
+        state.lastSuccess = 0;
       }
-      console.warn('[ChatGPT Work Quota]', state.error); // 不记录 Token 或完整接口响应
+      console.warn('[ChatGPT Work Quota]', state.error);
     } finally {
-      state.loading = false;
-      render();
-      nextRefresh(state.error ? CONFIG.retryMs :
-        document.hidden ? CONFIG.refreshHiddenMs : CONFIG.refreshVisibleMs);
+      if (generation === state.generation) {
+        state.controller = null;
+        state.loading = false;
+        if (state.active) {
+          render();
+          nextRefresh(state.error ? CONFIG.retryMs : CONFIG.refreshVisibleMs);
+        }
+      }
     }
   }
+
+  // BEGIN WORK_PANEL_PREDICATES (pure helpers covered by tests)
+  function isRightWorkPanelPair(output, sources, viewportWidth, viewportHeight) {
+    if (viewportWidth < 660) return false;
+    const xLimit = Math.max(viewportWidth * 0.55, viewportWidth - 560);
+    const yLimit = Math.min(550, viewportHeight * 0.65);
+    return output.width > 0 && sources.width > 0 &&
+      output.left > xLimit && sources.left > xLimit &&
+      output.top >= 0 && output.top < yLimit &&
+      sources.top > output.top && sources.top - output.top < 400 &&
+      Math.abs(sources.left - output.left) < 100 &&
+      output.right <= viewportWidth + 12 && sources.right <= viewportWidth + 12;
+  }
+  // END WORK_PANEL_PREDICATES
+
+  // 查找右上角同时含有「输出 / 来源」标题的 Work 专属卡片。
+  // 不根据聊天正文里的“Work”字样判断，避免普通聊天误触发。
+  function locateWorkPanel() {
+    if (!document.body) return null;
+    const outputs = [], sources = [];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      const label = node.nodeValue?.trim();
+      const isOutput = label === '输出' || label === 'Output' || label === 'Outputs';
+      const isSource = label === '来源' || label === 'Sources';
+      if (!isOutput && !isSource) continue;
+      const element = node.parentElement;
+      if (!element || root.contains(element) || element.closest('[aria-hidden="true"]')) continue;
+      const rect = element.getBoundingClientRect();
+      if (!rect.width || !rect.height || rect.top < 0 ||
+          rect.left < window.innerWidth * 0.5) continue;
+      (isOutput ? outputs : sources).push({ element, rect });
+    }
+    for (const output of outputs) {
+      for (const source of sources) {
+        if (!isRightWorkPanelPair(output.rect, source.rect,
+          window.innerWidth, window.innerHeight)) continue;
+        let common = output.element;
+        while (common && !common.contains(source.element)) common = common.parentElement;
+        let fallback = null;
+        for (let el = common; el && el !== document.body; el = el.parentElement) {
+          const rect = el.getBoundingClientRect();
+          if (rect.width < 210 || rect.width > 540 || rect.height < 90 ||
+              rect.height > 720 || rect.right < window.innerWidth - 120) continue;
+          if (!fallback) fallback = el;
+          const style = window.getComputedStyle(el);
+          const bg = style.backgroundColor;
+          const hasSurface = bg && bg !== 'transparent' && bg !== 'rgba(0, 0, 0, 0)';
+          const hasRoundedCorners = parseFloat(style.borderTopLeftRadius) >= 8;
+          if (hasSurface || hasRoundedCorners) return el;
+        }
+        if (fallback) return fallback;
+      }
+    }
+    return null;
+  }
+
+  function deactivate() {
+    if (!state.active && !root.isConnected) return;
+    state.active = false;
+    state.panel = null;
+    state.generation++;
+    clearTimeout(state.timer);
+    state.controller?.abort();
+    state.controller = null;
+    state.loading = false;
+    root.remove();
+  }
+  function reconcileMount() {
+    const panel = locateWorkPanel();
+    if (!panel) { deactivate(); return; }
+    const newlyActive = !state.active;
+    if (root.parentElement !== panel) panel.appendChild(root);
+    state.active = true;
+    state.panel = panel;
+    syncTheme();
+    render();
+    if (newlyActive) {
+      if (!document.hidden) void refresh();
+    } else if (!state.loading && !state.timer && !document.hidden &&
+               Date.now() - state.lastSuccess >= CONFIG.refreshVisibleMs) {
+      void refresh();
+    }
+  }
+  function scheduleScan() {
+    if (state.scanTimer != null) return;
+    state.scanTimer = setTimeout(() => {
+      state.scanTimer = null;
+      reconcileMount();
+    }, CONFIG.scanThrottleMs);
+  }
+  const observer = new MutationObserver(scheduleScan);
+  observer.observe(document.body, { childList: true, subtree: true });
+  // 单页路由、React 替换组件以及面板晚加载都需要重新定位。
+  window.addEventListener('popstate', scheduleScan);
+  window.addEventListener('pageshow', scheduleScan);
+  setInterval(scheduleScan, 4000);
   nodes.refresh.addEventListener('click', () => {
-    if (!state.loading) { clearTimeout(state.timer); void refresh(); }
+    if (state.active && !state.loading) {
+      clearTimeout(state.timer);
+      state.timer = null;
+      void refresh();
+    }
   });
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && (!state.lastSuccess || Date.now() - state.lastSuccess >= 30_000)) {
-      clearTimeout(state.timer);
-      void refresh();
-    } else {
-      nextRefresh(document.hidden ? CONFIG.refreshHiddenMs : CONFIG.refreshVisibleMs);
+    clearTimeout(state.timer);
+    state.timer = null;
+    if (!document.hidden) {
+      scheduleScan();
+      if (state.active && !state.loading) {
+        if (!state.lastSuccess || Date.now() - state.lastSuccess >= 30_000) void refresh();
+        else nextRefresh(CONFIG.refreshVisibleMs);
+      }
     }
   });
   window.addEventListener('focus', () => {
-    if (!state.loading && Date.now() - state.lastSuccess >= 60_000) {
-      clearTimeout(state.timer);
-      void refresh();
-    }
+    scheduleScan();
+    if (state.active && !state.loading &&
+        Date.now() - state.lastSuccess >= CONFIG.refreshVisibleMs) void refresh();
   });
-  // 倒计时逐秒更新，不需要每秒访问服务器。
+  // 仅在 Work 面板可见时更新倒计时，避免无关页面额外开销。
   setInterval(() => {
-    if (!document.hidden) render();
+    if (state.active && !document.hidden) render();
   }, 1000);
-  void refresh();
+  reconcileMount();
 })();
