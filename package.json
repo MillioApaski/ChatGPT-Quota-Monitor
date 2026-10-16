@@ -1,0 +1,11 @@
+{
+  "name": "chatgpt-quota-monitor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tampermonkey overlay for shared ChatGPT Work and Codex usage limits",
+  "scripts": {
+    "test": "node --check chatgpt-quota-monitor.user.js && node --test tests/*.test.mjs"
+  },
+  "engines": { "node": ">=20" },
+  "license": "MIT"
+}
