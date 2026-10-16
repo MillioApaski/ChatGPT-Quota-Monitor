@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT Quota Monitor (Work / Codex)
 // @namespace    https://github.com/MillioApaski/ChatGPT-Quota-Monitor
-// @version      1.1.0
+// @version      1.1.1
 // @author       ChatGPT (GPT-6)
 // @license      MIT
 // @homepageURL  https://github.com/MillioApaski/ChatGPT-Quota-Monitor
@@ -48,7 +48,11 @@
       --line:rgba(255,255,255,.11); --track:#48484c;
       --ok:#3dcb97; --warn:#efbd5f; --low:#f08080; }
     * { box-sizing:border-box; }
-    .card { width:100%; margin-top:12px; padding-top:9px; border-top:1px solid var(--line);
+    /* The Work panel owns the full-width section divider, while its
+       headings/list items sit inside 16px horizontal gutters. Apply the
+       same gutters to the quota card to avoid flush-edge text/bars. */
+    .card { width:100%; margin-top:12px; padding:12px 16px 14px;
+      border-top:1px solid var(--line);
       background:transparent; color:var(--fg); overflow:hidden; }
     .header { display:flex; align-items:center; justify-content:space-between;
       padding:0 0 10px; gap:8px; user-select:none; }
@@ -65,7 +69,7 @@
     button[disabled] { cursor:wait; opacity:.5; }
     #collapse { font-size:18px; line-height:1; }
     #refresh { font-size:16px; line-height:1; }
-    .body { padding:0 0 1px; }
+    .body { padding:0; }
     .quota + .quota { margin-top:12px; }
     .line { display:flex; justify-content:space-between; align-items:center; gap:10px; }
     .label { color:var(--fg); }
