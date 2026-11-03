@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         ChatGPT Quota Monitor (Work / Codex)
 // @namespace    https://github.com/MillioApaski/ChatGPT-Quota-Monitor
-// @version      1.3.2
+// @version      1.3.3
 // @author       ChatGPT (GPT-6)
 // @license      MIT
 // @homepageURL  https://github.com/MillioApaski/ChatGPT-Quota-Monitor
 // @supportURL   https://github.com/MillioApaski/ChatGPT-Quota-Monitor/issues
 // @updateURL    https://raw.githubusercontent.com/MillioApaski/ChatGPT-Quota-Monitor/main/chatgpt-quota-monitor.user.js
 // @downloadURL  https://raw.githubusercontent.com/MillioApaski/ChatGPT-Quota-Monitor/main/chatgpt-quota-monitor.user.js
-// @description  与网页侧栏对齐的真圆弧额度按钮（5h/周），点击弹出用量面板；Work 保留右上角监控。
+// @description  动态显示5h与周额度已用/剩余弧段，精确对齐账号头像及用户名，点击查看详情。
 // @match        https://chatgpt.com/*
 // @run-at       document-idle
 // @grant        none
@@ -91,33 +91,37 @@
        The popup is rendered in a separate body portal to escape overflow clipping. */
     :host([data-placement="work"]) .sidebar-trigger { display:none; }
     :host([data-placement="sidebar"]) .card { display:none; }
-    /* Align the real SVG box AND label against measured avatar and name.
-       Avoid hard-coded offsets, which diverge with sidebar versions/zoom. */
+    /* The two positions are measured independently from the account row.
+       Absolute coordinates prevent flex gap/padding/browser zoom drift. */
     :host([data-placement="sidebar"]) { padding:0; }
-    .sidebar-trigger { width:100%; height:44px;
-      padding:4px 8px 4px var(--cg-icon-indent, 16px);
-      display:flex; align-items:center; justify-content:flex-start;
-      gap:var(--cg-icon-gap, 12px);
-      border-radius:9px; color:var(--fg); background:transparent;
+    .sidebar-trigger { position:relative; width:100%; height:44px; padding:0;
+      display:block; border-radius:9px; color:var(--fg); background:transparent;
       cursor:pointer; text-align:left; transition:background .15s ease; }
     .sidebar-trigger:hover, .sidebar-trigger[aria-expanded="true"] {
       background:var(--track);
     }
-    .sidebar-trigger .quota-icon { width:36px; height:36px; min-width:36px;
-      max-width:36px; max-height:36px; overflow:visible; flex-shrink:0; }
-    .sidebar-trigger-label { color:var(--fg); font-size:14px; line-height:20px; font-weight:400;
-      white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .quota-ring-track { fill:none; stroke:var(--muted); opacity:.32;
-      stroke-width:2.8; stroke-linecap:round; }
-    .quota-ring-progress { fill:none; stroke:var(--fg); stroke-width:2.8;
+    .sidebar-trigger .quota-icon { position:absolute;
+      left:var(--cg-ring-left, 16px); top:50%; transform:translateY(-50%);
+      width:28px; height:28px; overflow:visible; }
+    .sidebar-trigger-label { position:absolute; top:50%; transform:translateY(-50%);
+      left:var(--cg-label-left, 64px); color:var(--fg); font-size:14px;
+      line-height:20px; font-weight:400; white-space:nowrap; }
+    :host { --cg-ring-used:#b66c15; }
+    :host([data-theme="dark"]) { --cg-ring-used:#ffb64d; }
+    .quota-ring-track { fill:none; stroke:var(--muted); opacity:.34;
+      stroke-width:3; stroke-linecap:round; }
+    .quota-ring-progress { fill:none; stroke:var(--fg); stroke-width:3;
       stroke-linecap:round; stroke-dasharray:0 100;
       transition:stroke-dasharray .25s ease; }
+    .quota-ring-used { fill:none; stroke:var(--cg-ring-used); stroke-width:3;
+      stroke-linecap:round; stroke-dasharray:0 100;
+      transition:stroke-dasharray .25s ease, stroke-dashoffset .25s ease; }
     .quota-ring-diamond { fill:var(--fg); opacity:.65; }
     .quota-ring-single { display:none; }
     .quota-icon.single .quota-ring-dual { display:none; }
     .quota-icon.single .quota-ring-single { display:block; }
     @media (prefers-reduced-motion:reduce) {
-      .quota-ring-progress { transition:none; }
+      .quota-ring-progress, .quota-ring-used { transition:none; }
     }
     :host { --sidebar-bg:#f0f1f3; --sidebar-outline:rgba(35,35,40,.08); }
     :host([data-theme="dark"]) { --sidebar-bg:#2c2c2f; --sidebar-outline:rgba(255,255,255,.06); }
@@ -212,12 +216,16 @@
     <g class="quota-ring-dual">
       <path class="quota-ring-track" d="M9.65 6.51 A14.2 14.2 0 0 1 26.35 6.51" pathLength="100"/>
       <path class="quota-ring-progress" id="quota-ring-five" d="M9.65 6.51 A14.2 14.2 0 0 1 26.35 6.51" pathLength="100"/>
+      <path class="quota-ring-used" id="quota-ring-five-used" d="M9.65 6.51 A14.2 14.2 0 0 1 26.35 6.51" pathLength="100"/>
       <path class="quota-ring-track" d="M29.49 9.65 A14.2 14.2 0 1 1 6.51 9.65" pathLength="100"/>
       <path class="quota-ring-progress" id="quota-ring-week" d="M29.49 9.65 A14.2 14.2 0 1 1 6.51 9.65" pathLength="100"/>
+      <path class="quota-ring-used" id="quota-ring-week-used" d="M29.49 9.65 A14.2 14.2 0 1 1 6.51 9.65" pathLength="100"/>
     </g>
     <g class="quota-ring-single">
       <circle class="quota-ring-track" cx="18" cy="18" r="14.2"/>
       <circle class="quota-ring-progress" id="quota-ring-week-single" cx="18" cy="18" r="14.2"
+        pathLength="100" transform="rotate(-90 18 18)"/>
+      <circle class="quota-ring-used" id="quota-ring-week-single-used" cx="18" cy="18" r="14.2"
         pathLength="100" transform="rotate(-90 18 18)"/>
     </g>
     <path class="quota-ring-diamond" d="M18 13.4 22.6 18 18 22.6 13.4 18Z"/>
@@ -243,6 +251,9 @@
     fiveRing: shadow.getElementById('quota-ring-five'),
     weekRing: shadow.getElementById('quota-ring-week'),
     weekFullRing: shadow.getElementById('quota-ring-week-single'),
+    fiveUsedRing: shadow.getElementById('quota-ring-five-used'),
+    weekUsedRing: shadow.getElementById('quota-ring-week-used'),
+    weekFullUsedRing: shadow.getElementById('quota-ring-week-single-used'),
     trigger,
   };
 
@@ -412,6 +423,24 @@
     setProgress(nodes.fiveRing, fivePercent);
     setProgress(nodes.weekRing, weekPercent);
     setProgress(nodes.weekFullRing, weekPercent);
+    // Distinguish "used" from "remaining". At 92% and 99% remaining,
+    // the 8% and 1% consumed pieces used to blend into the dark track.
+    // A contrast-color segment remains proportional; a 1% segment
+    // becomes a small visible dot thanks to rounded stroke caps.
+    const setUsed = (node, remaining) => {
+      if (remaining === null) {
+        node.style.strokeDasharray = '0 100';
+        node.style.opacity = '0';
+        return;
+      }
+      const used = 100 - remaining;
+      node.style.strokeDasharray = `${used} 100`;
+      node.style.strokeDashoffset = `${-remaining}`;
+      node.style.opacity = used > 0 ? '1' : '0';
+    };
+    setUsed(nodes.fiveUsedRing, fivePercent);
+    setUsed(nodes.weekUsedRing, weekPercent);
+    setUsed(nodes.weekFullUsedRing, weekPercent);
     const describe = (percent) => percent === null ? '未提供' : `${Math.round(percent)}%`;
     const label = fivePercent === null
       ? `查看套餐额度：周额度剩余 ${describe(weekPercent)}`
@@ -724,12 +753,12 @@
     return target?.left ?? null;
   }
   // BEGIN SIDEBAR_ALIGNMENT
-  function sidebarAlignment(avatarLeft, avatarWidth, nameLeft, hostLeft, iconWidth) {
-    const targetIconLeft = avatarLeft + (avatarWidth - iconWidth) / 2;
-    const indent = Math.max(0, Math.min(120, targetIconLeft - hostLeft));
-    const gap = Math.max(0, Math.min(32,
-      (nameLeft ?? (avatarLeft + avatarWidth + 12)) - (targetIconLeft + iconWidth)));
-    return { indent: Math.round(indent), gap: Math.round(gap) };
+  function sidebarAlignment(avatarCenter, nameLeft, hostLeft, ringSize) {
+    // Both returned offsets are in root-local pixels; no flex calculations.
+    const ringLeft = Math.max(0, avatarCenter - ringSize / 2 - hostLeft);
+    const labelLeft = Math.max(ringLeft + ringSize + 4,
+      (nameLeft ?? (avatarCenter + 30)) - hostLeft);
+    return { ringLeft: Math.round(ringLeft), labelLeft: Math.round(labelLeft) };
   }
   // END SIDEBAR_ALIGNMENT
 
@@ -739,19 +768,20 @@
     const profile = profileButton.getBoundingClientRect();
     if (!host.width || !profile.width) return;
     const avatar = locateProfileAvatar(profileButton);
-    // Use the profile button left only when no avatar element can be found.
-    // Prior +12px guess misaligned users whose profile button already begins at the avatar.
-    const avatarLeft = avatar?.left ?? profile.left;
-    const avatarWidth = avatar?.width ?? 36;
-    const nameLeft = locateProfileNameLeft(profileButton, avatarLeft + avatarWidth);
-    const aligned = sidebarAlignment(avatarLeft, avatarWidth, nameLeft, host.left, 36);
-    const indent = `${aligned.indent}px`;
-    const gap = `${aligned.gap}px`;
-    if (root.style.getPropertyValue('--cg-icon-indent') !== indent) {
-      root.style.setProperty('--cg-icon-indent', indent);
+    // The colored initials avatar can be nested in non-obvious wrappers. If
+    // it cannot be found, derive its center from the measured username.
+    const nameLeft = locateProfileNameLeft(profileButton,
+      avatar?.right ?? (profile.left + 24));
+    const avatarCenter = avatar ? avatar.left + avatar.width / 2
+      : nameLeft !== null ? nameLeft - 30 : profile.left + 18;
+    const aligned = sidebarAlignment(avatarCenter, nameLeft, host.left, 28);
+    const ringLeft = `${aligned.ringLeft}px`;
+    const labelLeft = `${aligned.labelLeft}px`;
+    if (root.style.getPropertyValue('--cg-ring-left') !== ringLeft) {
+      root.style.setProperty('--cg-ring-left', ringLeft);
     }
-    if (root.style.getPropertyValue('--cg-icon-gap') !== gap) {
-      root.style.setProperty('--cg-icon-gap', gap);
+    if (root.style.getPropertyValue('--cg-label-left') !== labelLeft) {
+      root.style.setProperty('--cg-label-left', labelLeft);
     }
   }
 
