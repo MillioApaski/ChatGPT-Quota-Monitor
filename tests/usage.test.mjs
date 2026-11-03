@@ -372,3 +372,25 @@ test('preserves Work-only embedded meter and click-to-open normal chat popup', (
   assert.ok(source.includes('if (state.mode && state.mode !== placement) closePopup()'));
   assert.ok(source.includes('if (!state.active || document.hidden || state.loading) return;'));
 });
+
+const profileStart = source.indexOf('// BEGIN SIDEBAR_PROFILE_DETECTION');
+const profileEnd = source.indexOf('// END SIDEBAR_PROFILE_DETECTION');
+assert.ok(profileStart >= 0 && profileEnd > profileStart);
+const { looksLikeProfileLocation } = runInNewContext(
+  source.slice(profileStart, profileEnd) + '\n({ looksLikeProfileLocation })'
+);
+test('profile location check tolerates narrower account buttons in expanded sidebar', () => {
+  assert.equal(looksLikeProfileLocation(
+    {left:48,right:305,top:810,bottom:870,width:257,height:60}, 1645,896),true);
+  assert.equal(looksLikeProfileLocation(
+    {left:70,right:160,top:820,bottom:870,width:90,height:50},1645,896),true);
+  assert.equal(looksLikeProfileLocation(
+    {left:900,right:1100,top:820,bottom:870,width:200,height:50},1645,896),false);
+});
+test('mount errors and avatar measurement failures do not prevent quota rendering', () => {
+  assert.ok(source.includes('try {\n        alignSidebarTrigger(sidebar.profileButton)'));
+  assert.ok(source.includes('function runMountSafely()'));
+  assert.ok(source.includes('runMountSafely();'));
+  assert.ok(source.includes('function profileCandidate()'));
+  assert.ok(source.includes("'button,[role=\"button\"]'"));
+});
