@@ -1,14 +1,14 @@
 // ==UserScript==
-// @name         ChatGPT Quota Monitor (Work / Codex)
+// @name         ChatGPT Quota Monitor
 // @namespace    https://github.com/MillioApaski/ChatGPT-Quota-Monitor
-// @version      1.1.1
+// @version      1.2.0
 // @author       ChatGPT (GPT-6)
 // @license      MIT
 // @homepageURL  https://github.com/MillioApaski/ChatGPT-Quota-Monitor
 // @supportURL   https://github.com/MillioApaski/ChatGPT-Quota-Monitor/issues
 // @updateURL    https://raw.githubusercontent.com/MillioApaski/ChatGPT-Quota-Monitor/main/chatgpt-quota-monitor.user.js
 // @downloadURL  https://raw.githubusercontent.com/MillioApaski/ChatGPT-Quota-Monitor/main/chatgpt-quota-monitor.user.js
-// @description  仅在 ChatGPT Work 中，将 5 小时/每周剩余额度嵌入右上角「输出 / 来源」面板。
+// @description  在普通 ChatGPT 网页侧栏底部显示桌面版风格的套餐额度；Work 会话保留右上角嵌入显示。
 // @match        https://chatgpt.com/*
 // @run-at       document-idle
 // @grant        none
@@ -31,7 +31,7 @@
 
   const root = document.createElement('div');
   root.id = 'cg-work-quota-root';
-  // 不允许在普通 ChatGPT 页面出现悬浮组件；只有定位到 Work 专属面板后才挂载。
+  // 同一额度实例按页面布局在 Work 右侧面板或普通聊天左侧栏之间移动。
   root.style.cssText = [
     'display:block', 'width:100%', 'min-width:0', 'max-width:100%',
     'grid-column:1 / -1', 'flex:none', 'box-sizing:border-box',
@@ -86,6 +86,31 @@
     .card.collapsed .body { display:none; }
     .card.collapsed .header { padding-bottom:0; }
     .card.collapsed .brand { font-size:11px; }
+
+    /* Desktop-inspired quota summary in ChatGPT's expanded left sidebar. */
+    :host([data-placement="work"]) .sidebar-card { display:none; }
+    :host([data-placement="sidebar"]) .card { display:none; }
+    :host([data-placement="sidebar"]) { padding:0 8px 8px; }
+    :host { --sidebar-bg:#f0f1f3; --sidebar-outline:rgba(35,35,40,.08); }
+    :host([data-theme="dark"]) { --sidebar-bg:#2c2c2f; --sidebar-outline:rgba(255,255,255,.06); }
+    .sidebar-card { width:100%; padding:12px 11px 8px; border-radius:13px;
+      color:var(--fg); background:var(--sidebar-bg); border:1px solid var(--sidebar-outline);
+      overflow:hidden; font-size:11px; line-height:1.45; }
+    .sidebar-source { display:flex; align-items:center; justify-content:space-between;
+      gap:6px; color:var(--muted); min-width:0; }
+    .sidebar-source-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .sidebar-reload { font-size:15px; min-width:21px; height:21px; line-height:1; flex:none; }
+    .sidebar-divider { border-top:1px solid var(--line); margin:7px 0 8px; }
+    .sidebar-row { display:flex; align-items:center; justify-content:space-between;
+      gap:8px; min-width:0; margin:8px 0; }
+    .sidebar-row span { min-width:0; }
+    .sidebar-row strong { white-space:nowrap; font-size:11px; font-weight:650;
+      font-variant-numeric:tabular-nums; }
+    .sidebar-row strong.missing { color:var(--muted); font-weight:500; }
+    .sidebar-manage { display:block; color:var(--fg); text-decoration:none; border-radius:5px;
+      font-size:11px; padding:2px 0 1px; }
+    .sidebar-manage:hover { text-decoration:underline; }
+    .sidebar-manage:focus-visible { outline:2px solid var(--ok); outline-offset:2px; }
   `;
   shadow.append(css);
 
@@ -115,6 +140,24 @@
     </div>`;
   shadow.append(card);
 
+  const sidebarCard = document.createElement('section');
+  sidebarCard.className = 'sidebar-card';
+  sidebarCard.setAttribute('aria-label', 'ChatGPT 用量余额');
+  sidebarCard.innerHTML = `
+    <div class="sidebar-source">
+      <span class="sidebar-source-label" id="sidebar-plan">额度来源：读取中…</span>
+      <button class="sidebar-reload" id="sidebar-refresh" type="button"
+        aria-label="刷新额度" title="刷新额度">↻</button>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-row"><span>5 小时用量上限</span><strong id="sidebar-five">读取中…</strong></div>
+    <div class="sidebar-row"><span>每周限额</span><strong id="sidebar-week">读取中…</strong></div>
+    <div class="sidebar-row"><span>额度</span><strong id="sidebar-credits">读取中…</strong></div>
+    <div class="sidebar-divider"></div>
+    <a class="sidebar-manage" href="/settings/usage" title="在 ChatGPT 中管理用量">管理用量</a>
+  `;
+  shadow.append(sidebarCard);
+
   const $ = (id) => shadow.getElementById(id);
   const nodes = {
     dot: $('dot'), brand: $('brand-text'), refresh: $('refresh'),
@@ -122,6 +165,9 @@
     fiveValue: $('five-value'), fiveBar: $('five-bar'), fiveReset: $('five-reset'),
     weekValue: $('week-value'), weekBar: $('week-bar'), weekReset: $('week-reset'),
     status: $('status'), updated: $('updated'),
+    sidebarPlan: $('sidebar-plan'), sidebarFive: $('sidebar-five'),
+    sidebarWeek: $('sidebar-week'), sidebarCredits: $('sidebar-credits'),
+    sidebarRefresh: $('sidebar-refresh'),
   };
 
   function syncTheme() {
@@ -165,6 +211,8 @@
     loading: false,
     error: '',
     plan: '',
+    credits: null,
+    mode: null,
     timer: null,
     active: false,
     panel: null,
@@ -201,8 +249,21 @@
     const closeTo = (seconds, target) => Math.abs(seconds - target) <= 600;
     const five = candidates.find((w) => closeTo(w.seconds, 18_000)) || null;
     const week = candidates.find((w) => closeTo(w.seconds, 604_800)) || null;
+    // credits 是可选的：无字段不代表账户余额为 0。
+    const rawCredits = json?.credits;
+    let credits = null;
+    if (rawCredits && typeof rawCredits === 'object') {
+      if (rawCredits.unlimited === true) credits = { unlimited: true };
+      else if (rawCredits.balance !== null && rawCredits.balance !== undefined &&
+        String(rawCredits.balance).trim() !== '' && Number.isFinite(Number(rawCredits.balance)) &&
+        Number(rawCredits.balance) >= 0) {
+        credits = { unlimited: false, balance: Number(rawCredits.balance) };
+      } else if (rawCredits.has_credits === false) {
+        credits = { unlimited: false, balance: 0 };
+      }
+    }
     // 部分套餐不返回五小时窗口或任何窗口，不将缺失误判为用尽。
-    return { five, week, plan: String(json.plan_type || '') };
+    return { five, week, plan: String(json.plan_type || ''), credits };
   }
   // END QUOTA_PARSER
 
@@ -237,7 +298,39 @@
     reset.textContent = w.resetAt ? `重置倒计时：${clockText(w.resetAt)}` : '重置时间：未提供';
     reset.title = w.resetAt ? `预计重置：${new Date(w.resetAt).toLocaleString('zh-CN')}` : '';
   }
+  function planLabel(plan) {
+    const known = { plus: 'Plus', pro: 'Pro', free: 'Free', go: 'Go',
+      business: 'Business', enterprise: 'Enterprise', edu: 'Edu' };
+    return known[String(plan).toLowerCase()] || (plan ? String(plan) : '当前');
+  }
+  function renderSidebarWindow(w, node) {
+    node.textContent = w ? `剩余 ${Math.round(w.remaining)}%`
+      : state.lastSuccess ? '未提供' : (state.error ? '读取失败' : '读取中…');
+    node.classList.toggle('missing', !w);
+    node.title = w?.resetAt ? `重置倒计时：${clockText(w.resetAt)}`
+      : '额度窗口数据不可用';
+  }
+  function renderSidebar() {
+    nodes.sidebarPlan.textContent = state.lastSuccess
+      ? `额度来源：你的 ${planLabel(state.plan)} 套餐`
+      : '额度来源：' + (state.error ? '获取失败' : '读取中…');
+    renderSidebarWindow(state.windows.five, nodes.sidebarFive);
+    renderSidebarWindow(state.windows.week, nodes.sidebarWeek);
+    const credits = state.credits;
+    const creditText = credits?.unlimited ? '不限'
+      : credits && Number.isFinite(credits.balance)
+        ? `额度：${credits.balance.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`
+        : state.lastSuccess ? '额度：未提供' : state.error ? '读取失败' : '读取中…';
+    nodes.sidebarCredits.textContent = creditText;
+    nodes.sidebarCredits.classList.toggle('missing', !credits);
+    nodes.sidebarRefresh.disabled = state.loading;
+    sidebarCard.title = state.error
+      ? `额度更新失败：${state.error}${state.lastSuccess ? '，正在显示上次成功的数据' : ''}`
+      : state.lastSuccess ? `上次更新：${new Date(state.lastSuccess).toLocaleTimeString('zh-CN')}`
+        : '正在读取账户额度';
+  }
   function render() {
+    renderSidebar();
     renderWindow(state.windows.five, nodes.fiveValue, nodes.fiveBar, nodes.fiveReset);
     renderWindow(state.windows.week, nodes.weekValue, nodes.weekBar, nodes.weekReset);
     nodes.dot.className = 'dot' + (state.error ? ' error' : state.loading ? ' busy' : '');
@@ -301,6 +394,7 @@
       const parsed = parseUsage(data);
       state.windows = { five: parsed.five, week: parsed.week };
       state.plan = parsed.plan;
+      state.credits = parsed.credits;
       state.lastSuccess = Date.now();
       state.error = '';
     } catch (error) {
@@ -309,6 +403,7 @@
         error instanceof Error ? error.message : '未知错误';
       if (/HTTP 401|HTTP 403|访问令牌|重新登录/.test(state.error)) {
         state.windows = { five: null, week: null };
+        state.credits = null;
         state.lastSuccess = 0;
       }
       console.warn('[ChatGPT Work Quota]', state.error);
@@ -393,9 +488,44 @@
     return null;
   }
 
+  // BEGIN SIDEBAR_PREDICATES (pure helpers covered by tests)
+  function isExpandedSidebarProfile(rect, viewportWidth, viewportHeight) {
+    return viewportWidth >= 760 && rect.width >= 130 && rect.width <= 390 &&
+      rect.height >= 25 && rect.left >= 0 && rect.right <= Math.min(450, viewportWidth * .46) &&
+      rect.top > viewportHeight * .55 && rect.bottom <= viewportHeight + 16;
+  }
+  // END SIDEBAR_PREDICATES
+
+  // 2026 年网页的展开侧栏账户入口；不可用时退回侧栏滚动区旁的 footer。
+  // 不挂载到窄图标 rail 或被 inert 隐藏的重复导航树上。
+  function locateSidebarInsertion() {
+    const profileButtons = document.querySelectorAll('[data-testid="accounts-profile-button"]');
+    for (const button of profileButtons) {
+      if (button.closest('[inert], [aria-hidden="true"]')) continue;
+      if (!isExpandedSidebarProfile(button.getBoundingClientRect(),
+        innerWidth, innerHeight)) continue;
+      const parent = button.parentElement;
+      const anchor = parent && parent.children.length === 1 ? parent : button;
+      if (anchor.parentElement && anchor.parentElement !== document.body) {
+        return { parent: anchor.parentElement, anchor };
+      }
+    }
+    for (const scroll of document.querySelectorAll('[data-app-action-sidebar-scroll]')) {
+      if (scroll.closest('[inert], [aria-hidden="true"]')) continue;
+      const footer = [scroll.nextElementSibling, scroll.parentElement?.nextElementSibling]
+        .find((el) => el?.querySelector('button[aria-haspopup="menu"]'));
+      const button = footer?.querySelector('button[aria-haspopup="menu"]');
+      if (!button || !isExpandedSidebarProfile(button.getBoundingClientRect(),
+        innerWidth, innerHeight)) continue;
+      return { parent: footer, anchor: footer.firstChild };
+    }
+    return null;
+  }
+
   function deactivate() {
     if (!state.active && !root.isConnected) return;
     state.active = false;
+    state.mode = null;
     state.panel = null;
     state.generation++;
     clearTimeout(state.timer);
@@ -405,12 +535,22 @@
     root.remove();
   }
   function reconcileMount() {
-    const panel = locateWorkPanel();
-    if (!panel) { deactivate(); return; }
+    const workPanel = locateWorkPanel();
+    const sidebar = workPanel ? null : locateSidebarInsertion();
+    if (!workPanel && !sidebar) { deactivate(); return; }
+    const placement = workPanel ? 'work' : 'sidebar';
     const newlyActive = !state.active;
-    if (root.parentElement !== panel) panel.appendChild(root);
+    // 复用同一份数据和轮询定时器，避免 Work 与普通聊天重复请求。
+    if (workPanel) {
+      if (root.parentElement !== workPanel) workPanel.appendChild(root);
+    } else if (root.parentElement !== sidebar.parent ||
+               root.nextSibling !== sidebar.anchor) {
+      sidebar.parent.insertBefore(root, sidebar.anchor);
+    }
     state.active = true;
-    state.panel = panel;
+    state.mode = placement;
+    state.panel = workPanel;
+    root.dataset.placement = placement;
     syncTheme();
     render();
     if (newlyActive) {
@@ -433,13 +573,15 @@
   window.addEventListener('popstate', scheduleScan);
   window.addEventListener('pageshow', scheduleScan);
   setInterval(scheduleScan, 4000);
-  nodes.refresh.addEventListener('click', () => {
+  function manualRefresh() {
     if (state.active && !state.loading) {
       clearTimeout(state.timer);
       state.timer = null;
       void refresh();
     }
-  });
+  }
+  nodes.refresh.addEventListener('click', manualRefresh);
+  nodes.sidebarRefresh.addEventListener('click', manualRefresh);
   document.addEventListener('visibilitychange', () => {
     clearTimeout(state.timer);
     state.timer = null;
