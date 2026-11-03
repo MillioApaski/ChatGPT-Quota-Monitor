@@ -63,7 +63,8 @@ test('metadata matches package version and update URLs', () => {
   const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   assert.ok(source.includes('@version      ' + version));
   assert.match(source, /@match\s+https:\/\/chatgpt\.com\/\*/);
-  assert.match(source, /@grant\s+none/);
+  assert.match(source, /@sandbox\s+DOM/);
+  assert.doesNotMatch(source, /@grant\s+none/);
   const url = 'https://raw.githubusercontent.com/MillioApaski/ChatGPT-Quota-Monitor/main/chatgpt-quota-monitor.user.js';
   assert.ok(source.includes('@updateURL    ' + url));
   assert.ok(source.includes('@downloadURL  ' + url));
@@ -394,4 +395,14 @@ test('mount errors and avatar measurement failures do not prevent quota renderin
   assert.ok(source.includes('runMountSafely();'));
   assert.ok(source.includes('function profileCandidate()'));
   assert.ok(source.includes("'button,[role=\"button\"]'"));
+});
+
+
+test('script publishes safe diagnostic status even when no profile is found', () => {
+  assert.ok(source.includes("setDiagnostic('started')"));
+  assert.ok(source.includes("setDiagnostic('profile-not-found')"));
+  assert.ok(source.includes("setDiagnostic('mount-error', error?.name || 'Error')"));
+  assert.ok(source.includes("setDiagnostic(placement === 'work' ? 'work-mounted' : 'sidebar-mounted')"));
+  assert.ok(source.includes("html.dataset.cgQuotaMonitor = '1.3.6'"));
+  assert.doesNotMatch(source, /dataset\.cgQuotaToken|dataset\.cgQuotaEmail/);
 });
