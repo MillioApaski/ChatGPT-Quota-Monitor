@@ -254,7 +254,7 @@ test('native sidebar-style row is measured against the profile rather than the v
   assert.match(source, /function alignSidebarTrigger\(profileButton\)/);
   assert.match(source, /profileButton\.getBoundingClientRect\(\)/);
   assert.match(source, /sidebarAlignment\(avatarLeft, avatarWidth, nameLeft, host\.left, 36\)/);
-  assert.match(source, /root\.style\.setProperty\('--cg-icon-indent', cssValue\)/);
+  assert.match(source, /root\.style\.setProperty\('--cg-icon-indent', indent\)/);
   assert.match(source, /width:100%; height:44px/);
   assert.match(source, /class="sidebar-trigger-label">额度<\/span>/);
   assert.doesNotMatch(source, /padding:0 8px 7px 19px/);
