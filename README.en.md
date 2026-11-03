@@ -2,7 +2,7 @@
 
 English | [简体中文](./README.md)
 
-A lightweight, dependency-free **Tampermonkey userscript** that adds a desktop-inspired **usage card above the account button in the left sidebar** of regular ChatGPT web chats. In **Work** conversations, it keeps the existing **Output / Sources** quota section on the right. Both views use the same Work/Codex usage data.
+A lightweight, dependency-free **Tampermonkey userscript** adding a compact quota **button above the account entry in the regular ChatGPT web sidebar**. Click it to open the desktop-inspired quota popup; it is hidden by default. In **Work** conversations, the existing **Output / Sources** meter stays on the right. Both use the same Work/Codex usage data.
 
 > **Disclaimer:** Unofficial community project, not affiliated with OpenAI. It uses an **undocumented internal endpoint** that may change without notice. For authoritative numbers, use **ChatGPT Settings → Usage**.
 
@@ -11,7 +11,8 @@ A lightweight, dependency-free **Tampermonkey userscript** that adds a desktop-i
 - Classifies 5-hour and weekly windows by actual duration, regardless of the order of primary/secondary fields.
 - Displays the remaining percentage reported by the service; does not guess from the number of messages.
 - Updates countdown timers locally every second, and refreshes usage roughly every 60 seconds while visible.
-- Desktop-style card in the expanded web sidebar: plan source, 5-hour and weekly limits, optional credits, and a Manage usage link.
+- Click-to-open desktop-style popup: only a small icon is visible in the expanded web sidebar until clicked. Shows plan source, 5-hour and weekly limits, optional credits, and a Manage usage link.
+- Click the icon again, click outside, or press Escape to close. Popup stays within viewport and is removed when closed.
 - Existing collapsible Work Output / Sources quota section stays on the right, including progress bars and reset countdowns.
 - Only one placement is active at a time; no duplicate API polling. Hidden if the sidebar is collapsed or narrow.
 - Manual refresh, timeout/error handling, and clear messages when a window is unavailable.
@@ -21,8 +22,8 @@ A lightweight, dependency-free **Tampermonkey userscript** that adds a desktop-i
 
 1. Install [Tampermonkey](https://www.tampermonkey.net/) and allow userscripts on chatgpt.com.
 2. [**Install this userscript**](https://raw.githubusercontent.com/MillioApaski/ChatGPT-Quota-Monitor/main/chatgpt-quota-monitor.user.js).
-3. Reload a **regular ChatGPT web chat** at https://chatgpt.com/ and expand the left sidebar. The quota card appears above the profile button.
-4. In **Work**, the meter instead appears in the upper-right Output / Sources panel. Click **−** to collapse the Work section or **↻** to refresh either view.
+3. Reload a **regular ChatGPT web chat** at https://chatgpt.com/ and expand the sidebar. A small quota icon appears above the profile button.
+4. Click the icon to show the popup. Click outside or press **Esc** to dismiss it. In **Work**, the meter stays in the upper-right Output / Sources panel.
 
 ## Data source and privacy
 
@@ -56,7 +57,7 @@ GitHub Actions validates syntax, quota parsing, and userscript metadata. To publ
 
 ## Work UI compatibility
 
-The script recognizes Work from its Output / Sources headings and geometry, then inserts into the right card. Otherwise, it looks for the expanded sidebar profile button (with a footer fallback) and inserts a card above it. These are not public DOM contracts and may change without notice. No fixed-position overlays are used. Live browser validation is still required for the new sidebar layout.
+The script recognizes Work from its Output / Sources headings and geometry. Otherwise, it looks for the expanded sidebar profile button (with a footer fallback) and inserts only a trigger button above it. The popup is portaled to document.body on demand, avoiding sidebar overflow clipping, and dismissed on navigation/Work transitions. These are not public DOM contracts and may change without notice. Live browser validation is still required.
 
 ## License and AI notice
 
