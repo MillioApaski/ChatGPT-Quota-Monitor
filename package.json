@@ -1,8 +1,8 @@
 {
   "name": "chatgpt-quota-monitor",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "private": true,
-  "description": "Tampermonkey overlay for shared ChatGPT Work and Codex usage limits",
+  "description": "Desktop-inspired ChatGPT sidebar quota card and Work panel monitor",
   "scripts": {
     "test": "node --check chatgpt-quota-monitor.user.js && node --test tests/*.test.mjs"
   },
