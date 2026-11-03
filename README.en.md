@@ -79,3 +79,7 @@ The sidebar ring now explicitly draws used allowance in amber on top of the gray
 ### v1.3.4 progress direction and alignment
 
 The upper and lower quota arcs now both run left-to-right, so consumed segments appear at the same side. Avatar detection prioritizes the saturated inner avatar over neutral wrappers, and a relative spacing correction handles sidebar layouts where the measured icon and username disagree. The Work pane remains unchanged. The exact browser layout still needs a live visual check.
+
+### v1.3.5 sidebar reliability
+
+The sidebar profile locator now tolerates renamed `data-testid` attributes or missing menu attributes while still requiring the expanded left navigation region. A failure when measuring avatar styles is isolated, leaving the quota button and API polling operational. Chromium integration tests exercise a standard sidebar, missing profile attributes, and a simulated avatar-layout error. These are synthetic DOM tests, not a live authenticated ChatGPT session.
