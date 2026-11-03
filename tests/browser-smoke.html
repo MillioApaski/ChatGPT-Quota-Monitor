@@ -6,7 +6,7 @@ html,body {margin:0;width:100%;height:100%;background:#0f0f0f;color:#eee;font-fa
 .sidebar {position:absolute;left:40px;top:34px;bottom:0;width:270px;display:flex;flex-direction:column;background:#111;border:1px solid #444}
 .history {flex:1;min-height:0;overflow:hidden;padding:15px}
 .profile-section {width:100%;height:62px;box-sizing:border-box;border-top:1px solid #444}
-[data-testid="accounts-profile-button"] {box-sizing:border-box;width:100%;height:60px;display:flex;align-items:center;gap:12px;background:transparent;color:#eee;border:0;text-align:left;padding:0 12px;cursor:pointer}
+.profile-button {box-sizing:border-box;width:100%;height:60px;display:flex;align-items:center;gap:12px;background:transparent;color:#eee;border:0;text-align:left;padding:0 12px;cursor:pointer}
 .avatar {width:36px;height:36px;display:flex;align-items:center;justify-content:center;flex:none;border-radius:50%;background:rgb(24,186,153);color:#fff;font-size:12px}
 .user {display:flex;flex-direction:column;font-size:14px}.user .tier{font-size:12px;color:#bbb}
 #result {position:absolute;left:360px;top:40px;white-space:pre-wrap}
@@ -31,17 +31,32 @@ window.fetch = async function(url,options) {
 <div class="sidebar" id="sidebar">
 <div class="history"><div>最近</div><p>编写额度监控脚本</p><p>其他聊天</p></div>
 <div class="profile-section">
-<button type="button" data-testid="accounts-profile-button">
+<button id="profile-button" class="profile-button" type="button" data-testid="accounts-profile-button">
 <span class="avatar">AP</span><span class="user"><span>apeccc</span><span class="tier">Plus</span></span>
 </button>
 </div>
 </div>
 <pre id="result">pending</pre>
+<script>
+const params=new URLSearchParams(location.search);
+const profileButton=document.getElementById('profile-button');
+if(params.has('no-testid')){
+  profileButton.removeAttribute('data-testid');
+  profileButton.removeAttribute('aria-haspopup');
+}
+if(params.has('bad-avatar')){
+  const original=window.getComputedStyle;
+  window.getComputedStyle=function(el){
+    if(el?.classList?.contains('avatar')) throw new Error('Simulated avatar style error');
+    return original.call(window,el);
+  };
+}
+</script>
 <script src="../chatgpt-quota-monitor.user.js"></script>
 <script>
 function check() {
  const root=document.getElementById("cg-work-quota-root");
- const profile=document.querySelector('[data-testid="accounts-profile-button"]');
+ const profile=document.getElementById('profile-button');
  const result={
   rootExists:!!root,
   rootConnected:!!root?.isConnected,
