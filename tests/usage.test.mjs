@@ -401,7 +401,7 @@ test('mount errors and avatar measurement failures do not prevent quota renderin
 
 test('script publishes safe diagnostic status even when no profile is found', () => {
   assert.ok(source.includes("setDiagnostic('started')"));
-  assert.ok(source.includes("setDiagnostic('profile-not-found')"));
+  assert.ok(source.includes("setDiagnostic('profile-not-found',"));
   assert.ok(source.includes("setDiagnostic('mount-error', error?.name || 'Error')"));
   assert.ok(source.includes("setDiagnostic(placement === 'work' ? 'work-mounted' : 'sidebar-mounted')"));
   assert.ok(source.includes("html.dataset.cgQuotaMonitor = '1.3.7'"));
