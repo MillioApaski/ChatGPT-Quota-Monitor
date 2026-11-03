@@ -265,7 +265,7 @@ test('account avatar center and username x-position independently determine icon
 test('missing avatar falls back to measured username, not arbitrary account-button x', () => {
   assert.ok(source.includes('locateProfileAvatar(profileButton)'));
   assert.ok(source.includes('locateProfileNameLeft(profileButton'));
-  assert.ok(source.includes('nameLeft !== null ? nameLeft - 30 : profile.left + 18'));
+  assert.ok(source.includes('measuredName !== null ? measuredName - 30 : profile.left + 18'));
   assert.ok(source.includes("root.style.setProperty('--cg-ring-left', ringLeft)"));
   assert.ok(source.includes("root.style.setProperty('--cg-label-left', labelLeft)"));
   assert.ok(!source.includes("'--cg-icon-gap'"));
