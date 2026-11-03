@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         ChatGPT Quota Monitor
+// @name         ChatGPT Quota Monitor (Work / Codex)
 // @namespace    https://github.com/MillioApaski/ChatGPT-Quota-Monitor
 // @version      1.2.0
 // @author       ChatGPT (GPT-6)
@@ -517,7 +517,7 @@
       const button = footer?.querySelector('button[aria-haspopup="menu"]');
       if (!button || !isExpandedSidebarProfile(button.getBoundingClientRect(),
         innerWidth, innerHeight)) continue;
-      return { parent: footer, anchor: footer.firstChild };
+      return { parent: footer, anchor: footer.firstChild === root ? root.nextSibling : footer.firstChild };
     }
     return null;
   }
@@ -540,6 +540,7 @@
     if (!workPanel && !sidebar) { deactivate(); return; }
     const placement = workPanel ? 'work' : 'sidebar';
     const newlyActive = !state.active;
+    root.dataset.placement = placement;
     // 复用同一份数据和轮询定时器，避免 Work 与普通聊天重复请求。
     if (workPanel) {
       if (root.parentElement !== workPanel) workPanel.appendChild(root);
@@ -550,7 +551,6 @@
     state.active = true;
     state.mode = placement;
     state.panel = workPanel;
-    root.dataset.placement = placement;
     syncTheme();
     render();
     if (newlyActive) {
