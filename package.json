@@ -1,8 +1,8 @@
 {
   "name": "chatgpt-quota-monitor",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "private": true,
-  "description": "Click-to-open quota popover for ChatGPT web and integrated Work panel meter",
+  "description": "Desktop-style 5h/weekly progress-ring trigger and quota popover for ChatGPT",
   "scripts": {
     "test": "node --check chatgpt-quota-monitor.user.js && node --test tests/*.test.mjs"
   },
