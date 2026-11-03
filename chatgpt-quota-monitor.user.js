@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         ChatGPT Quota Monitor (Work / Codex)
 // @namespace    https://github.com/MillioApaski/ChatGPT-Quota-Monitor
-// @version      1.3.3
+// @version      1.3.4
 // @author       ChatGPT (GPT-6)
 // @license      MIT
 // @homepageURL  https://github.com/MillioApaski/ChatGPT-Quota-Monitor
 // @supportURL   https://github.com/MillioApaski/ChatGPT-Quota-Monitor/issues
 // @updateURL    https://raw.githubusercontent.com/MillioApaski/ChatGPT-Quota-Monitor/main/chatgpt-quota-monitor.user.js
 // @downloadURL  https://raw.githubusercontent.com/MillioApaski/ChatGPT-Quota-Monitor/main/chatgpt-quota-monitor.user.js
-// @description  动态显示5h与周额度已用/剩余弧段，精确对齐账号头像及用户名，点击查看详情。
+// @description  统一方向的5h/周额度圆弧，自动校准侧栏图标和文字位置，点击查看详情。
 // @match        https://chatgpt.com/*
 // @run-at       document-idle
 // @grant        none
@@ -217,9 +217,9 @@
       <path class="quota-ring-track" d="M9.65 6.51 A14.2 14.2 0 0 1 26.35 6.51" pathLength="100"/>
       <path class="quota-ring-progress" id="quota-ring-five" d="M9.65 6.51 A14.2 14.2 0 0 1 26.35 6.51" pathLength="100"/>
       <path class="quota-ring-used" id="quota-ring-five-used" d="M9.65 6.51 A14.2 14.2 0 0 1 26.35 6.51" pathLength="100"/>
-      <path class="quota-ring-track" d="M29.49 9.65 A14.2 14.2 0 1 1 6.51 9.65" pathLength="100"/>
-      <path class="quota-ring-progress" id="quota-ring-week" d="M29.49 9.65 A14.2 14.2 0 1 1 6.51 9.65" pathLength="100"/>
-      <path class="quota-ring-used" id="quota-ring-week-used" d="M29.49 9.65 A14.2 14.2 0 1 1 6.51 9.65" pathLength="100"/>
+      <path class="quota-ring-track" d="M6.51 9.65 A14.2 14.2 0 1 0 29.49 9.65" pathLength="100"/>
+      <path class="quota-ring-progress" id="quota-ring-week" d="M6.51 9.65 A14.2 14.2 0 1 0 29.49 9.65" pathLength="100"/>
+      <path class="quota-ring-used" id="quota-ring-week-used" d="M6.51 9.65 A14.2 14.2 0 1 0 29.49 9.65" pathLength="100"/>
     </g>
     <g class="quota-ring-single">
       <circle class="quota-ring-track" cx="18" cy="18" r="14.2"/>
@@ -708,14 +708,21 @@
   }
   // END SIDEBAR_PREDICATES
 
-  // Prefer the colored round avatar, including initials-only avatars that
-  // have no <img>. The first square wrapper is not necessarily the avatar.
+  // The account avatar may be a plain circle with initials, or an image.
+  // Prefer the visible, saturated-colored inner circle rather than a padded
+  // outer wrapper; the latter caused the icon to sit ~5px left in screenshots.
+  function profileColorChroma(color) {
+    const parts = /^rgba?\(([^)]+)\)/.exec(color);
+    if (!parts) return 0;
+    const rgb = parts[1].split(/[ ,/]+/).slice(0, 3).map(Number);
+    if (rgb.length !== 3 || !rgb.every(Number.isFinite)) return 0;
+    return (Math.max(...rgb) - Math.min(...rgb)) / 255;
+  }
   function locateProfileAvatar(profileButton) {
     const profile = profileButton.getBoundingClientRect();
     let best = null;
     let bestScore = -Infinity;
-    const elements = Array.from(profileButton.querySelectorAll('*'));
-    for (const element of elements) {
+    for (const element of profileButton.querySelectorAll('*')) {
       const rect = element.getBoundingClientRect();
       if (rect.width < 24 || rect.width > 52 || rect.height < 24 ||
           Math.abs(rect.width - rect.height) > 5 ||
@@ -724,12 +731,18 @@
       const radius = parseFloat(style.borderTopLeftRadius) || 0;
       const round = style.borderTopLeftRadius.includes('%') ||
         radius >= Math.min(rect.width, rect.height) * 0.35;
-      const bg = style.backgroundColor;
+      const bg = style.backgroundColor || '';
       const hasBg = bg && bg !== 'transparent' && bg !== 'rgba(0, 0, 0, 0)';
       const isImage = element.tagName === 'IMG';
       if (!round && !isImage) continue;
-      const score = (round ? 2 : 0) + (hasBg ? 3 : 0) + (isImage ? 4 : 0) -
-        Math.abs(rect.width - 36) * .06 - (rect.left - profile.left) * .01;
+      const initialText = element.textContent?.trim() || '';
+      const hasInitials = initialText.length > 0 && initialText.length <= 3 &&
+        /^[\p{L}\p{N}]+$/u.test(initialText);
+      const chroma = profileColorChroma(bg);
+      // Saturated circular avatars win over neutral wrapper divs.
+      const score = (isImage ? 25 : 0) + (chroma > .22 ? 18 * chroma : 0) +
+        (round ? 3 : 0) + (hasBg ? 1 : 0) + (hasInitials ? 3 : 0) -
+        Math.abs(rect.width - 36) * .08 - (rect.left - profile.left) * .008;
       if (score > bestScore) { bestScore = score; best = rect; }
     }
     return best;
@@ -741,20 +754,42 @@
     while ((node = walker.nextNode())) {
       const label = node.textContent?.trim();
       if (!label || label.length > 80) continue;
+      const parent = node.parentElement;
+      if (!parent || parent.closest('[aria-hidden="true"],[hidden]')) continue;
+      const css = window.getComputedStyle(parent);
+      if (css.display === 'none' || css.visibility === 'hidden') continue;
       const range = document.createRange();
       range.selectNodeContents(node);
       const rect = range.getBoundingClientRect();
-      if (rect.width < 6 || rect.left < avatarRight + 4) continue;
-      if (!target || rect.top < target.top ||
-          (Math.abs(rect.top - target.top) < 2 && rect.left < target.left)) {
+      if (rect.width < 6 || rect.height < 8 || rect.left < avatarRight + 3) continue;
+      if (!target || rect.top < target.top - 1 ||
+          (Math.abs(rect.top - target.top) <= 1 && rect.left < target.left)) {
         target = rect;
       }
     }
     return target?.left ?? null;
   }
+
   // BEGIN SIDEBAR_ALIGNMENT
+  function reconcileProfileAnchors(avatarCenter, nameLeft, avatarWidth) {
+    // ChatGPT profile has a ~12px avatar-to-text gap. If the DOM scanner
+    // chose a neutral wrapper/text inset instead, preserve their midpoint
+    // while correcting the spacing. A 36px avatar implies 18+12 = 30px
+    // between its center and the username's first pixel.
+    if (!Number.isFinite(nameLeft)) return { avatarCenter, nameLeft };
+    const targetDistance = avatarWidth / 2 + 12;
+    const mismatch = nameLeft - avatarCenter - targetDistance;
+    if (Math.abs(mismatch) < 5 || Math.abs(mismatch) > 30) {
+      return { avatarCenter, nameLeft };
+    }
+    const correction = mismatch / 2;
+    return {
+      avatarCenter: avatarCenter + correction,
+      nameLeft: nameLeft - correction,
+    };
+  }
   function sidebarAlignment(avatarCenter, nameLeft, hostLeft, ringSize) {
-    // Both returned offsets are in root-local pixels; no flex calculations.
+    // Both offsets are relative to the SAME host, not separate flex boxes.
     const ringLeft = Math.max(0, avatarCenter - ringSize / 2 - hostLeft);
     const labelLeft = Math.max(ringLeft + ringSize + 4,
       (nameLeft ?? (avatarCenter + 30)) - hostLeft);
@@ -768,13 +803,14 @@
     const profile = profileButton.getBoundingClientRect();
     if (!host.width || !profile.width) return;
     const avatar = locateProfileAvatar(profileButton);
-    // The colored initials avatar can be nested in non-obvious wrappers. If
-    // it cannot be found, derive its center from the measured username.
-    const nameLeft = locateProfileNameLeft(profileButton,
+    const measuredName = locateProfileNameLeft(profileButton,
       avatar?.right ?? (profile.left + 24));
-    const avatarCenter = avatar ? avatar.left + avatar.width / 2
-      : nameLeft !== null ? nameLeft - 30 : profile.left + 18;
-    const aligned = sidebarAlignment(avatarCenter, nameLeft, host.left, 28);
+    const measuredCenter = avatar ? avatar.left + avatar.width / 2
+      : measuredName !== null ? measuredName - 30 : profile.left + 18;
+    const anchors = reconcileProfileAnchors(measuredCenter, measuredName,
+      avatar?.width ?? 36);
+    const aligned = sidebarAlignment(anchors.avatarCenter,
+      anchors.nameLeft, host.left, 28);
     const ringLeft = `${aligned.ringLeft}px`;
     const labelLeft = `${aligned.labelLeft}px`;
     if (root.style.getPropertyValue('--cg-ring-left') !== ringLeft) {
