@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         ChatGPT Quota Monitor (Work / Codex)
 // @namespace    https://github.com/MillioApaski/ChatGPT-Quota-Monitor
-// @version      1.3.1
+// @version      1.3.2
 // @author       ChatGPT (GPT-6)
 // @license      MIT
 // @homepageURL  https://github.com/MillioApaski/ChatGPT-Quota-Monitor
 // @supportURL   https://github.com/MillioApaski/ChatGPT-Quota-Monitor/issues
 // @updateURL    https://raw.githubusercontent.com/MillioApaski/ChatGPT-Quota-Monitor/main/chatgpt-quota-monitor.user.js
 // @downloadURL  https://raw.githubusercontent.com/MillioApaski/ChatGPT-Quota-Monitor/main/chatgpt-quota-monitor.user.js
-// @description  桌面版风格双进度弧额度按钮，点击弹出用量面板；Work 保留右上角监控。
+// @description  与网页侧栏对齐的真圆弧额度按钮（5h/周），点击弹出用量面板；Work 保留右上角监控。
 // @match        https://chatgpt.com/*
 // @run-at       document-idle
 // @grant        none
@@ -91,19 +91,21 @@
        The popup is rendered in a separate body portal to escape overflow clipping. */
     :host([data-placement="work"]) .sidebar-trigger { display:none; }
     :host([data-placement="sidebar"]) .card { display:none; }
-    /* Render as a native-sized nav row, not an oversized square stuck to the viewport edge.
-       --cg-icon-indent is computed from the actual account-avatar position. */
+    /* Align the real SVG box AND label against measured avatar and name.
+       Avoid hard-coded offsets, which diverge with sidebar versions/zoom. */
     :host([data-placement="sidebar"]) { padding:0; }
-    .sidebar-trigger { width:100%; height:44px; padding:3px 10px 3px var(--cg-icon-indent, 16px);
-      display:flex; align-items:center; justify-content:flex-start; gap:12px;
+    .sidebar-trigger { width:100%; height:44px;
+      padding:4px 8px 4px var(--cg-icon-indent, 16px);
+      display:flex; align-items:center; justify-content:flex-start;
+      gap:var(--cg-icon-gap, 12px);
       border-radius:9px; color:var(--fg); background:transparent;
       cursor:pointer; text-align:left; transition:background .15s ease; }
     .sidebar-trigger:hover, .sidebar-trigger[aria-expanded="true"] {
       background:var(--track);
     }
-    .sidebar-trigger .quota-icon { width:34px; height:34px; min-width:34px;
-      max-width:34px; max-height:34px; overflow:visible; flex-shrink:0; }
-    .sidebar-trigger-label { color:var(--fg); font-size:14px; font-weight:400;
+    .sidebar-trigger .quota-icon { width:36px; height:36px; min-width:36px;
+      max-width:36px; max-height:36px; overflow:visible; flex-shrink:0; }
+    .sidebar-trigger-label { color:var(--fg); font-size:14px; line-height:20px; font-weight:400;
       white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .quota-ring-track { fill:none; stroke:var(--muted); opacity:.32;
       stroke-width:2.8; stroke-linecap:round; }
@@ -202,18 +204,20 @@
   trigger.setAttribute('aria-label', '查看套餐额度');
   trigger.setAttribute('aria-haspopup', 'dialog');
   trigger.setAttribute('aria-expanded', 'false');
-  // 与桌面客户端一致：短上弧=5小时，长下弧=每周。
-  // 无五小时额度时不留空白短弧，改成周额度的完整圆环。
+  // Both strokes are arcs of the SAME exact circle (center 18,18, radius 14.2).
+  // Short upper arc: 234° → 306° (5h).
+  // Long lower arc: 324° → 216° clockwise through the bottom (weekly).
+  // Using SVG elliptical A commands prevents the flat sides/visible kinks from v1.3.1.
   trigger.innerHTML = `<svg class="quota-icon" viewBox="0 0 36 36" aria-hidden="true">
     <g class="quota-ring-dual">
-      <path class="quota-ring-track" d="M8.5 9.6 C13.2 4.9 22.8 4.9 27.5 9.6" pathLength="100"/>
-      <path class="quota-ring-progress" id="quota-ring-five" d="M8.5 9.6 C13.2 4.9 22.8 4.9 27.5 9.6" pathLength="100"/>
-      <path class="quota-ring-track" d="M29.2 14 V19.2 C29.2 25.9 24.5 30 18 30 C11.5 30 6.8 25.9 6.8 19.2 V14" pathLength="100"/>
-      <path class="quota-ring-progress" id="quota-ring-week" d="M29.2 14 V19.2 C29.2 25.9 24.5 30 18 30 C11.5 30 6.8 25.9 6.8 19.2 V14" pathLength="100"/>
+      <path class="quota-ring-track" d="M9.65 6.51 A14.2 14.2 0 0 1 26.35 6.51" pathLength="100"/>
+      <path class="quota-ring-progress" id="quota-ring-five" d="M9.65 6.51 A14.2 14.2 0 0 1 26.35 6.51" pathLength="100"/>
+      <path class="quota-ring-track" d="M29.49 9.65 A14.2 14.2 0 1 1 6.51 9.65" pathLength="100"/>
+      <path class="quota-ring-progress" id="quota-ring-week" d="M29.49 9.65 A14.2 14.2 0 1 1 6.51 9.65" pathLength="100"/>
     </g>
     <g class="quota-ring-single">
-      <circle class="quota-ring-track" cx="18" cy="18" r="12.2"/>
-      <circle class="quota-ring-progress" id="quota-ring-week-single" cx="18" cy="18" r="12.2"
+      <circle class="quota-ring-track" cx="18" cy="18" r="14.2"/>
+      <circle class="quota-ring-progress" id="quota-ring-week-single" cx="18" cy="18" r="14.2"
         pathLength="100" transform="rotate(-90 18 18)"/>
     </g>
     <path class="quota-ring-diamond" d="M18 13.4 22.6 18 18 22.6 13.4 18Z"/>
@@ -235,6 +239,7 @@
     sidebarCredits: popupShadow.getElementById('sidebar-credits'),
     sidebarRefresh: popupShadow.getElementById('sidebar-refresh'),
     ringIcon: shadow.querySelector('.quota-icon'),
+    sidebarLabel: shadow.querySelector('.sidebar-trigger-label'),
     fiveRing: shadow.getElementById('quota-ring-five'),
     weekRing: shadow.getElementById('quota-ring-week'),
     weekFullRing: shadow.getElementById('quota-ring-week-single'),
@@ -674,20 +679,79 @@
   }
   // END SIDEBAR_PREDICATES
 
-  // Match the icon location to the *actual* avatar/button geometry, not a hard-coded x offset.
+  // Prefer the colored round avatar, including initials-only avatars that
+  // have no <img>. The first square wrapper is not necessarily the avatar.
+  function locateProfileAvatar(profileButton) {
+    const profile = profileButton.getBoundingClientRect();
+    let best = null;
+    let bestScore = -Infinity;
+    const elements = Array.from(profileButton.querySelectorAll('*'));
+    for (const element of elements) {
+      const rect = element.getBoundingClientRect();
+      if (rect.width < 24 || rect.width > 52 || rect.height < 24 ||
+          Math.abs(rect.width - rect.height) > 5 ||
+          rect.left < profile.left - 6 || rect.left > profile.left + 92) continue;
+      const style = window.getComputedStyle(element);
+      const radius = parseFloat(style.borderTopLeftRadius) || 0;
+      const round = style.borderTopLeftRadius.includes('%') ||
+        radius >= Math.min(rect.width, rect.height) * 0.35;
+      const bg = style.backgroundColor;
+      const hasBg = bg && bg !== 'transparent' && bg !== 'rgba(0, 0, 0, 0)';
+      const isImage = element.tagName === 'IMG';
+      if (!round && !isImage) continue;
+      const score = (round ? 2 : 0) + (hasBg ? 3 : 0) + (isImage ? 4 : 0) -
+        Math.abs(rect.width - 36) * .06 - (rect.left - profile.left) * .01;
+      if (score > bestScore) { bestScore = score; best = rect; }
+    }
+    return best;
+  }
+  function locateProfileNameLeft(profileButton, avatarRight) {
+    const walker = document.createTreeWalker(profileButton, NodeFilter.SHOW_TEXT);
+    let node;
+    let target = null;
+    while ((node = walker.nextNode())) {
+      const label = node.textContent?.trim();
+      if (!label || label.length > 80) continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const rect = range.getBoundingClientRect();
+      if (rect.width < 6 || rect.left < avatarRight + 4) continue;
+      if (!target || rect.top < target.top ||
+          (Math.abs(rect.top - target.top) < 2 && rect.left < target.left)) {
+        target = rect;
+      }
+    }
+    return target?.left ?? null;
+  }
+  // BEGIN SIDEBAR_ALIGNMENT
+  function sidebarAlignment(avatarLeft, avatarWidth, nameLeft, hostLeft, iconWidth) {
+    const targetIconLeft = avatarLeft + (avatarWidth - iconWidth) / 2;
+    const indent = Math.max(0, Math.min(120, targetIconLeft - hostLeft));
+    const gap = Math.max(0, Math.min(32,
+      (nameLeft ?? (avatarLeft + avatarWidth + 12)) - (targetIconLeft + iconWidth)));
+    return { indent: Math.round(indent), gap: Math.round(gap) };
+  }
+  // END SIDEBAR_ALIGNMENT
+
   function alignSidebarTrigger(profileButton) {
     if (!profileButton?.isConnected) return;
     const host = root.getBoundingClientRect();
     const profile = profileButton.getBoundingClientRect();
     if (!host.width || !profile.width) return;
-    const avatar = profileButton.querySelector('img, [data-testid*="avatar"]');
-    const a = avatar?.getBoundingClientRect();
-    const avatarLeft = a && a.width >= 24 && a.width <= 52
-      ? a.left : profile.left + 12;
-    const indent = Math.max(0, Math.min(88, Math.round(avatarLeft - host.left)));
-    const cssValue = `${indent}px`;
-    if (root.style.getPropertyValue('--cg-icon-indent') !== cssValue) {
-      root.style.setProperty('--cg-icon-indent', cssValue);
+    const avatar = locateProfileAvatar(profileButton);
+    // Use the profile button left only when no avatar element can be found.
+    // Prior +12px guess misaligned users whose profile button already begins at the avatar.
+    const avatarLeft = avatar?.left ?? profile.left;
+    const avatarWidth = avatar?.width ?? 36;
+    const nameLeft = locateProfileNameLeft(profileButton, avatarLeft + avatarWidth);
+    const aligned = sidebarAlignment(avatarLeft, avatarWidth, nameLeft, host.left, 36);
+    const indent = `${aligned.indent}px`;
+    const gap = `${aligned.gap}px`;
+    if (root.style.getPropertyValue('--cg-icon-indent') !== indent) {
+      root.style.setProperty('--cg-icon-indent', indent);
+    }
+    if (root.style.getPropertyValue('--cg-icon-gap') !== gap) {
+      root.style.setProperty('--cg-icon-gap', gap);
     }
   }
 
