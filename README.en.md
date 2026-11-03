@@ -2,7 +2,7 @@
 
 English | [简体中文](./README.md)
 
-A lightweight, dependency-free **Tampermonkey userscript** adding a compact, live **two-arc quota button above the account entry in the regular ChatGPT web sidebar**. Click it to open the desktop-inspired quota popup; it is hidden by default. In **Work** conversations, the existing **Output / Sources** meter stays on the right. Both use the same Work/Codex usage data.
+A lightweight, dependency-free **Tampermonkey userscript** adding a native-sized **Quota sidebar row with a live two-arc ring icon** above the account entry in regular ChatGPT web chats. Click it to open the desktop-inspired quota popup; it is hidden by default. In **Work** conversations, the existing **Output / Sources** meter stays on the right. Both use the same Work/Codex usage data.
 
 > **Disclaimer:** Unofficial community project, not affiliated with OpenAI. It uses an **undocumented internal endpoint** that may change without notice. For authoritative numbers, use **ChatGPT Settings → Usage**.
 
@@ -12,7 +12,7 @@ A lightweight, dependency-free **Tampermonkey userscript** adding a compact, liv
 - Displays the remaining percentage reported by the service; does not guess from the number of messages.
 - Updates countdown timers locally every second, and refreshes usage roughly every 60 seconds while visible.
 - Desktop-style quota icon: the short upper arc tracks remaining 5-hour allowance; the long lower arc tracks remaining weekly allowance. If no 5-hour window exists, the weekly progress uses a complete ring. Unknown data is never displayed as 0 or 100%.
-- Click-to-open popup: only a compact icon aligned to the profile avatar is visible in the expanded web sidebar until clicked. Shows plan source, 5-hour and weekly limits, optional credits, and a Manage usage link.
+- Click-to-open popup: a native-sized **Quota** sidebar row aligns its progress ring with the actual profile avatar position. Click to show plan source, 5-hour and weekly limits, optional credits, and a Manage usage link.
 - Click the icon again, click outside, or press Escape to close. Popup stays within viewport and is removed when closed.
 - Existing collapsible Work Output / Sources quota section stays on the right, including progress bars and reset countdowns.
 - Only one placement is active at a time; no duplicate API polling. Hidden if the sidebar is collapsed or narrow.
@@ -23,7 +23,7 @@ A lightweight, dependency-free **Tampermonkey userscript** adding a compact, liv
 
 1. Install [Tampermonkey](https://www.tampermonkey.net/) and allow userscripts on chatgpt.com.
 2. [**Install this userscript**](https://raw.githubusercontent.com/MillioApaski/ChatGPT-Quota-Monitor/main/chatgpt-quota-monitor.user.js).
-3. Reload a **regular ChatGPT web chat** at https://chatgpt.com/ and expand the sidebar. A small quota icon appears above the profile button.
+3. Reload a **regular ChatGPT web chat** at https://chatgpt.com/ and expand the sidebar. A Quota row with live progress rings appears above the profile button.
 4. Click the icon to show the popup. Click outside or press **Esc** to dismiss it. In **Work**, the meter stays in the upper-right Output / Sources panel.
 
 ## Data source and privacy
@@ -63,3 +63,7 @@ The script recognizes Work from its Output / Sources headings and geometry. Othe
 ## License and AI notice
 
 [MIT](./LICENSE). Code and documentation were assisted by OpenAI ChatGPT (GPT-6). Behavior on a signed-in browser session still requires live validation.
+
+### v1.3.1 bug fix
+
+The popover contents are rendered inside a separate Shadow DOM. Previously the data-binding code accidentally looked up four elements in the original Shadow DOM, throwing during initial render and preventing the first usage fetch. All five popup nodes now resolve through `popupShadow`, with a dedicated regression test. Sidebar alignment now follows the real profile button geometry instead of a fixed inset.
