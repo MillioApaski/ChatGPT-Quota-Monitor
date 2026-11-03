@@ -94,7 +94,8 @@ test('mounts exactly one display in Work or expanded sidebar', () => {
   assert.match(source, /if \(!state\.popupOpen \|\| !popupRoot\.isConnected\) return;/);
   assert.doesNotMatch(source, /document\.documentElement\.append\(root\)/);
   assert.match(source, /workPanel \? null : locateSidebarInsertion\(\)/);
-  assert.match(source, /if \(!workPanel && !sidebar\) \{\s*setDiagnostic\('profile-not-found'\);\s*deactivate\(\);\s*return;\s*\}/);
+  assert.match(source, /if \(!workPanel && !sidebar\) \{\s*setDiagnostic\('profile-not-found'/);
+  assert.ok(source.includes("',planText=' + profileScanStats.text"));
   assert.match(source, /root\.dataset\.placement = placement/);
   assert.match(source, /if \(!state\.active \|\| document\.hidden \|\| state\.loading\) return;/);
   assert.match(source, /observer\.observe\(document\.body, \{ childList: true, subtree: true \}\)/);
@@ -403,6 +404,36 @@ test('script publishes safe diagnostic status even when no profile is found', ()
   assert.ok(source.includes("setDiagnostic('profile-not-found')"));
   assert.ok(source.includes("setDiagnostic('mount-error', error?.name || 'Error')"));
   assert.ok(source.includes("setDiagnostic(placement === 'work' ? 'work-mounted' : 'sidebar-mounted')"));
-  assert.ok(source.includes("html.dataset.cgQuotaMonitor = '1.3.6'"));
+  assert.ok(source.includes("html.dataset.cgQuotaMonitor = '1.3.7'"));
   assert.doesNotMatch(source, /dataset\.cgQuotaToken|dataset\.cgQuotaEmail/);
+});
+
+
+const fallbackStart = source.indexOf('// BEGIN PROFILE_FALLBACK');
+const fallbackEnd = source.indexOf('// END PROFILE_FALLBACK');
+assert.ok(fallbackStart >= 0 && fallbackEnd > fallbackStart);
+const { accountRegionShape, scoreAccountRegion } = runInNewContext(
+  source.slice(fallbackStart, fallbackEnd) + '\n({accountRegionShape, scoreAccountRegion})'
+);
+test('fallback accepts account footer even without a button/role/data-testid', () => {
+  assert.equal(accountRegionShape({
+    left:40, right:310, width:270, top:824, bottom:884, height:60
+  }, 1645, 896), true);
+  assert.equal(accountRegionShape({
+    left:40, right:310, width:270, top:100, bottom:200, height:100
+  }, 1645, 896), false);
+  assert.equal(accountRegionShape({
+    left:650, right:1000, width:350, top:824, bottom:884, height:60
+  }, 1645, 896), false);
+  assert.ok(scoreAccountRegion({height:60,bottom:884},896,true,true) >
+    scoreAccountRegion({height:60,bottom:884},896,false,true));
+});
+test('fallback scans visible bottom-left plan labels instead of only buttons', () => {
+  assert.ok(source.includes('function locateProfileByPlanText()'));
+  assert.ok(source.includes('NodeFilter.SHOW_TEXT'));
+  assert.ok(source.includes('if (!best) best = locateProfileByPlanText()'));
+  assert.ok(source.includes('profileScanStats.text++'));
+  assert.ok(source.includes('if (lastProfile?.isConnected && root.isConnected'));
+  assert.ok(source.includes("setDiagnostic('profile-not-found',"));
+  assert.ok(source.includes('profileScanStats.targets'));
 });
