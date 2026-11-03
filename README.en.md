@@ -83,3 +83,7 @@ The upper and lower quota arcs now both run left-to-right, so consumed segments 
 ### v1.3.5 sidebar reliability
 
 The sidebar profile locator now tolerates renamed `data-testid` attributes or missing menu attributes while still requiring the expanded left navigation region. A failure when measuring avatar styles is isolated, leaving the quota button and API polling operational. Chromium integration tests exercise a standard sidebar, missing profile attributes, and a simulated avatar-layout error. These are synthetic DOM tests, not a live authenticated ChatGPT session.
+
+### v1.3.6 CSP-aware sandbox and safe diagnostics
+
+The userscript now selects Tampermonkey `@sandbox DOM` and no longer uses `@grant none`, avoiding unnecessary main-world injection on pages with restrictive CSP. It does not bypass or modify ChatGPT security headers. In the browser console inspect `document.documentElement.dataset.cgQuotaMonitor` for the loaded version and `document.documentElement.dataset.cgQuotaState` for `started`, `profile-not-found`, `sidebar-mounted`, `work-mounted`, or `mount-error`. These values contain no credentials or account details.
