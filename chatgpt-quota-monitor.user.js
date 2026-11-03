@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         ChatGPT Quota Monitor (Work / Codex)
 // @namespace    https://github.com/MillioApaski/ChatGPT-Quota-Monitor
-// @version      1.2.0
+// @version      1.2.1
 // @author       ChatGPT (GPT-6)
 // @license      MIT
 // @homepageURL  https://github.com/MillioApaski/ChatGPT-Quota-Monitor
 // @supportURL   https://github.com/MillioApaski/ChatGPT-Quota-Monitor/issues
 // @updateURL    https://raw.githubusercontent.com/MillioApaski/ChatGPT-Quota-Monitor/main/chatgpt-quota-monitor.user.js
 // @downloadURL  https://raw.githubusercontent.com/MillioApaski/ChatGPT-Quota-Monitor/main/chatgpt-quota-monitor.user.js
-// @description  在普通 ChatGPT 网页侧栏底部显示桌面版风格的套餐额度；Work 会话保留右上角嵌入显示。
+// @description  网页侧栏点击额度按钮弹出桌面版风格的用量卡片；Work 保留右上角嵌入显示。
 // @match        https://chatgpt.com/*
 // @run-at       document-idle
 // @grant        none
@@ -87,10 +87,19 @@
     .card.collapsed .header { padding-bottom:0; }
     .card.collapsed .brand { font-size:11px; }
 
-    /* Desktop-inspired quota summary in ChatGPT's expanded left sidebar. */
-    :host([data-placement="work"]) .sidebar-card { display:none; }
+    /* Only the compact launch button is visible in the normal sidebar.
+       The popup is rendered in a separate body portal to escape overflow clipping. */
+    :host([data-placement="work"]) .sidebar-trigger { display:none; }
     :host([data-placement="sidebar"]) .card { display:none; }
-    :host([data-placement="sidebar"]) { padding:0 8px 8px; }
+    :host([data-placement="sidebar"]) { padding:0 8px 6px; }
+    .sidebar-trigger { width:34px; height:34px; display:grid; place-items:center;
+      border-radius:10px; color:var(--muted); background:transparent;
+      cursor:pointer; transition:background .15s ease, color .15s ease; }
+    .sidebar-trigger:hover, .sidebar-trigger[aria-expanded="true"] {
+      color:var(--fg); background:var(--track);
+    }
+    .sidebar-trigger svg { width:19px; height:19px; fill:none; stroke:currentColor;
+      stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
     :host { --sidebar-bg:#f0f1f3; --sidebar-outline:rgba(35,35,40,.08); }
     :host([data-theme="dark"]) { --sidebar-bg:#2c2c2f; --sidebar-outline:rgba(255,255,255,.06); }
     .sidebar-card { width:100%; padding:12px 11px 8px; border-radius:13px;
@@ -156,7 +165,32 @@
     <div class="sidebar-divider"></div>
     <a class="sidebar-manage" href="/settings/usage" title="在 ChatGPT 中管理用量">管理用量</a>
   `;
-  shadow.append(sidebarCard);
+  // Popover and its styling live outside ChatGPT sidebar's overflow containers.
+  const popupRoot = document.createElement('div');
+  popupRoot.id = 'cg-quota-popup';
+  popupRoot.style.cssText = [
+    'position:fixed', 'z-index:2147483646', 'width:260px',
+    'max-width:calc(100vw - 24px)', 'box-sizing:border-box',
+    'font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
+    'font-size:12px', 'line-height:1.45',
+  ].join(';');
+  const popupShadow = popupRoot.attachShadow({ mode: 'closed' });
+  popupShadow.append(css.cloneNode(true), sidebarCard);
+
+  const trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.className = 'sidebar-trigger';
+  trigger.id = 'sidebar-trigger';
+  trigger.title = '查看套餐额度';
+  trigger.setAttribute('aria-label', '查看套餐额度');
+  trigger.setAttribute('aria-haspopup', 'dialog');
+  trigger.setAttribute('aria-expanded', 'false');
+  trigger.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">
+    <circle cx="12" cy="12" r="9"></circle>
+    <path d="M7.5 14.5a5.5 5.5 0 0 1 9 0"></path>
+    <path d="m12 12 3.4-3.4"></path>
+  </svg>`;
+  shadow.append(trigger);
 
   const $ = (id) => shadow.getElementById(id);
   const nodes = {
@@ -167,7 +201,8 @@
     status: $('status'), updated: $('updated'),
     sidebarPlan: $('sidebar-plan'), sidebarFive: $('sidebar-five'),
     sidebarWeek: $('sidebar-week'), sidebarCredits: $('sidebar-credits'),
-    sidebarRefresh: $('sidebar-refresh'),
+    sidebarRefresh: popupShadow.getElementById('sidebar-refresh'),
+    trigger,
   };
 
   function syncTheme() {
@@ -177,6 +212,7 @@
       (!doc.classList.contains('light') && !doc.dataset.theme &&
         window.matchMedia('(prefers-color-scheme: dark)').matches);
     root.dataset.theme = dark ? 'dark' : 'light';
+    popupRoot.dataset.theme = root.dataset.theme;
   }
   syncTheme();
   new MutationObserver(syncTheme).observe(document.documentElement, {
@@ -219,6 +255,7 @@
     controller: null,
     generation: 0,
     scanTimer: null,
+    popupOpen: false,
   };
 
   // BEGIN QUOTA_PARSER (kept pure for automated tests)
@@ -488,6 +525,62 @@
     return null;
   }
 
+  // BEGIN POPOVER_POSITION (pure helper covered by tests)
+  function calculatePopoverPosition(anchor, popupWidth, popupHeight, viewportWidth, viewportHeight) {
+    const margin = 12;
+    const left = Math.max(margin,
+      Math.min(anchor.left - 7, viewportWidth - popupWidth - margin));
+    const above = anchor.top - popupHeight - 10;
+    const below = anchor.bottom + 10;
+    const top = above >= margin ? above :
+      below + popupHeight <= viewportHeight - margin ? below :
+        Math.max(margin, Math.min(above, viewportHeight - popupHeight - margin));
+    return { left, top };
+  }
+  // END POPOVER_POSITION
+
+  function positionPopup() {
+    if (!state.popupOpen || !popupRoot.isConnected) return;
+    const anchor = nodes.trigger.getBoundingClientRect();
+    const rect = popupRoot.getBoundingClientRect();
+    const { left, top } = calculatePopoverPosition(anchor, rect.width, rect.height,
+      innerWidth, innerHeight);
+    popupRoot.style.left = `${left}px`;
+    popupRoot.style.top = `${top}px`;
+  }
+
+  function closePopup() {
+    if (!state.popupOpen) return;
+    state.popupOpen = false;
+    nodes.trigger.setAttribute('aria-expanded', 'false');
+    popupRoot.remove();
+  }
+  function togglePopup() {
+    if (!state.active || state.mode !== 'sidebar') return;
+    if (state.popupOpen) { closePopup(); return; }
+    state.popupOpen = true;
+    nodes.trigger.setAttribute('aria-expanded', 'true');
+    document.body.appendChild(popupRoot);
+    positionPopup();
+  }
+  nodes.trigger.addEventListener('click', (event) => {
+    event.stopPropagation();
+    togglePopup();
+  });
+  document.addEventListener('pointerdown', (event) => {
+    if (!state.popupOpen) return;
+    const path = event.composedPath();
+    if (!path.includes(popupRoot) && !path.includes(root)) closePopup();
+  }, true);
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && state.popupOpen) {
+      closePopup();
+      nodes.trigger.focus();
+    }
+  });
+  window.addEventListener('resize', positionPopup);
+  window.addEventListener('scroll', positionPopup, true);
+
   // BEGIN SIDEBAR_PREDICATES (pure helpers covered by tests)
   function isExpandedSidebarProfile(rect, viewportWidth, viewportHeight) {
     return viewportWidth >= 760 && rect.width >= 130 && rect.width <= 390 &&
@@ -523,6 +616,7 @@
   }
 
   function deactivate() {
+    closePopup();
     if (!state.active && !root.isConnected) return;
     state.active = false;
     state.mode = null;
@@ -540,6 +634,8 @@
     if (!workPanel && !sidebar) { deactivate(); return; }
     const placement = workPanel ? 'work' : 'sidebar';
     const newlyActive = !state.active;
+    // Switching between Work and regular chat always dismisses the popover.
+    if (state.mode && state.mode !== placement) closePopup();
     root.dataset.placement = placement;
     // 复用同一份数据和轮询定时器，避免 Work 与普通聊天重复请求。
     if (workPanel) {
@@ -553,6 +649,7 @@
     state.panel = workPanel;
     syncTheme();
     render();
+    if (state.popupOpen) positionPopup();
     if (newlyActive) {
       if (!document.hidden) void refresh();
     } else if (!state.loading && !state.timer && !document.hidden &&
@@ -582,6 +679,8 @@
   }
   nodes.refresh.addEventListener('click', manualRefresh);
   nodes.sidebarRefresh.addEventListener('click', manualRefresh);
+  sidebarCard.setAttribute('role', 'dialog');
+  sidebarCard.setAttribute('aria-label', 'ChatGPT 套餐用量');
   document.addEventListener('visibilitychange', () => {
     clearTimeout(state.timer);
     state.timer = null;
