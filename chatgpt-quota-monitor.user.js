@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         ChatGPT Quota Monitor (Work / Codex)
 // @namespace    https://github.com/MillioApaski/ChatGPT-Quota-Monitor
-// @version      1.2.1
+// @version      1.3.0
 // @author       ChatGPT (GPT-6)
 // @license      MIT
 // @homepageURL  https://github.com/MillioApaski/ChatGPT-Quota-Monitor
 // @supportURL   https://github.com/MillioApaski/ChatGPT-Quota-Monitor/issues
 // @updateURL    https://raw.githubusercontent.com/MillioApaski/ChatGPT-Quota-Monitor/main/chatgpt-quota-monitor.user.js
 // @downloadURL  https://raw.githubusercontent.com/MillioApaski/ChatGPT-Quota-Monitor/main/chatgpt-quota-monitor.user.js
-// @description  网页侧栏点击额度按钮弹出桌面版风格的用量卡片；Work 保留右上角嵌入显示。
+// @description  桌面版风格双进度弧额度按钮，点击弹出用量面板；Work 保留右上角监控。
 // @match        https://chatgpt.com/*
 // @run-at       document-idle
 // @grant        none
@@ -91,15 +91,27 @@
        The popup is rendered in a separate body portal to escape overflow clipping. */
     :host([data-placement="work"]) .sidebar-trigger { display:none; }
     :host([data-placement="sidebar"]) .card { display:none; }
-    :host([data-placement="sidebar"]) { padding:0 8px 6px; }
-    .sidebar-trigger { width:34px; height:34px; display:grid; place-items:center;
+    /* Match the profile avatar's icon center in the expanded web sidebar. */
+    :host([data-placement="sidebar"]) { padding:0 8px 7px 19px; }
+    .sidebar-trigger { width:34px; height:34px; padding:3px; display:grid; place-items:center;
       border-radius:10px; color:var(--muted); background:transparent;
       cursor:pointer; transition:background .15s ease, color .15s ease; }
     .sidebar-trigger:hover, .sidebar-trigger[aria-expanded="true"] {
       color:var(--fg); background:var(--track);
     }
-    .sidebar-trigger svg { width:19px; height:19px; fill:none; stroke:currentColor;
-      stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+    .sidebar-trigger svg { width:30px; height:30px; max-width:100%; max-height:100%; overflow:visible; }
+    .quota-ring-track { fill:none; stroke:var(--muted); opacity:.32;
+      stroke-width:2.8; stroke-linecap:round; }
+    .quota-ring-progress { fill:none; stroke:var(--fg); stroke-width:2.8;
+      stroke-linecap:round; stroke-dasharray:0 100;
+      transition:stroke-dasharray .25s ease; }
+    .quota-ring-diamond { fill:var(--fg); opacity:.65; }
+    .quota-ring-single { display:none; }
+    .quota-icon.single .quota-ring-dual { display:none; }
+    .quota-icon.single .quota-ring-single { display:block; }
+    @media (prefers-reduced-motion:reduce) {
+      .quota-ring-progress { transition:none; }
+    }
     :host { --sidebar-bg:#f0f1f3; --sidebar-outline:rgba(35,35,40,.08); }
     :host([data-theme="dark"]) { --sidebar-bg:#2c2c2f; --sidebar-outline:rgba(255,255,255,.06); }
     .sidebar-card { width:100%; padding:12px 11px 8px; border-radius:13px;
@@ -185,10 +197,21 @@
   trigger.setAttribute('aria-label', '查看套餐额度');
   trigger.setAttribute('aria-haspopup', 'dialog');
   trigger.setAttribute('aria-expanded', 'false');
-  trigger.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">
-    <circle cx="12" cy="12" r="9"></circle>
-    <path d="M7.5 14.5a5.5 5.5 0 0 1 9 0"></path>
-    <path d="m12 12 3.4-3.4"></path>
+  // 与桌面客户端一致：短上弧=5小时，长下弧=每周。
+  // 无五小时额度时不留空白短弧，改成周额度的完整圆环。
+  trigger.innerHTML = `<svg class="quota-icon" viewBox="0 0 36 36" aria-hidden="true">
+    <g class="quota-ring-dual">
+      <path class="quota-ring-track" d="M8.5 9.6 C13.2 4.9 22.8 4.9 27.5 9.6" pathLength="100"/>
+      <path class="quota-ring-progress" id="quota-ring-five" d="M8.5 9.6 C13.2 4.9 22.8 4.9 27.5 9.6" pathLength="100"/>
+      <path class="quota-ring-track" d="M29.2 14 V19.2 C29.2 25.9 24.5 30 18 30 C11.5 30 6.8 25.9 6.8 19.2 V14" pathLength="100"/>
+      <path class="quota-ring-progress" id="quota-ring-week" d="M29.2 14 V19.2 C29.2 25.9 24.5 30 18 30 C11.5 30 6.8 25.9 6.8 19.2 V14" pathLength="100"/>
+    </g>
+    <g class="quota-ring-single">
+      <circle class="quota-ring-track" cx="18" cy="18" r="12.2"/>
+      <circle class="quota-ring-progress" id="quota-ring-week-single" cx="18" cy="18" r="12.2"
+        pathLength="100" transform="rotate(-90 18 18)"/>
+    </g>
+    <path class="quota-ring-diamond" d="M18 13.4 22.6 18 18 22.6 13.4 18Z"/>
   </svg>`;
   shadow.append(trigger);
 
@@ -202,6 +225,10 @@
     sidebarPlan: $('sidebar-plan'), sidebarFive: $('sidebar-five'),
     sidebarWeek: $('sidebar-week'), sidebarCredits: $('sidebar-credits'),
     sidebarRefresh: popupShadow.getElementById('sidebar-refresh'),
+    ringIcon: shadow.querySelector('.quota-icon'),
+    fiveRing: shadow.getElementById('quota-ring-five'),
+    weekRing: shadow.getElementById('quota-ring-week'),
+    weekFullRing: shadow.getElementById('quota-ring-week-single'),
     trigger,
   };
 
@@ -347,7 +374,40 @@
     node.title = w?.resetAt ? `重置倒计时：${clockText(w.resetAt)}`
       : '额度窗口数据不可用';
   }
+  // BEGIN QUOTA_ICON_MODEL (pure logic: no guessed percentages)
+  function quotaIconModel(five, week) {
+    const valid = (item) => item && Number.isFinite(item.remaining)
+      ? Math.max(0, Math.min(100, item.remaining)) : null;
+    const fivePercent = valid(five);
+    const weekPercent = valid(week);
+    return {
+      layout: fivePercent === null ? 'single' : 'dual',
+      fivePercent, weekPercent,
+    };
+  }
+  // END QUOTA_ICON_MODEL
+
+  function renderQuotaIcon() {
+    const { layout, fivePercent, weekPercent } =
+      quotaIconModel(state.windows.five, state.windows.week);
+    nodes.ringIcon.classList.toggle('single', layout === 'single');
+    const setProgress = (node, percent) => {
+      // SVG pathLength=100 normalizes the two differently sized arcs.
+      node.style.strokeDasharray = percent === null ? '0 100' : `${percent} 100`;
+    };
+    setProgress(nodes.fiveRing, fivePercent);
+    setProgress(nodes.weekRing, weekPercent);
+    setProgress(nodes.weekFullRing, weekPercent);
+    const describe = (percent) => percent === null ? '未提供' : `${Math.round(percent)}%`;
+    const label = fivePercent === null
+      ? `查看套餐额度：周额度剩余 ${describe(weekPercent)}`
+      : `查看套餐额度：5 小时剩余 ${describe(fivePercent)}，周额度剩余 ${describe(weekPercent)}`;
+    nodes.trigger.setAttribute('aria-label', label);
+    nodes.trigger.title = label;
+  }
+
   function renderSidebar() {
+    renderQuotaIcon();
     nodes.sidebarPlan.textContent = state.lastSuccess
       ? `额度来源：你的 ${planLabel(state.plan)} 套餐`
       : '额度来源：' + (state.error ? '获取失败' : '读取中…');
@@ -526,25 +586,41 @@
   }
 
   // BEGIN POPOVER_POSITION (pure helper covered by tests)
-  function calculatePopoverPosition(anchor, popupWidth, popupHeight, viewportWidth, viewportHeight) {
+  function calculatePopoverPosition(anchor, popupWidth, popupHeight,
+    viewportWidth, viewportHeight, sidebarEdge = anchor.right) {
+    const gap = 10;
     const margin = 12;
-    const left = Math.max(margin,
-      Math.min(anchor.left - 7, viewportWidth - popupWidth - margin));
-    const above = anchor.top - popupHeight - 10;
-    const below = anchor.bottom + 10;
-    const top = above >= margin ? above :
-      below + popupHeight <= viewportHeight - margin ? below :
-        Math.max(margin, Math.min(above, viewportHeight - popupHeight - margin));
+    // Desktop-style: popup opens beside the nav, not on top of the trigger.
+    const right = Math.max(anchor.right, sidebarEdge) + gap;
+    const left = right + popupWidth <= viewportWidth - margin
+      ? right : Math.max(margin, anchor.left - popupWidth - gap);
+    // Align the popup's lower edge with the trigger, clamped to the viewport.
+    const top = Math.max(margin, Math.min(
+      anchor.bottom - popupHeight, viewportHeight - popupHeight - margin));
     return { left, top };
   }
   // END POPOVER_POSITION
 
+  function sidebarRightEdge(anchor) {
+    // Expanded sidebar: prefer the right edge of the whole navigation panel.
+    // This avoids covering the account menu and chat list.
+    let edge = anchor.right;
+    let element = root.parentElement;
+    for (let i = 0; element && i < 12; element = element.parentElement, i++) {
+      const rect = element.getBoundingClientRect();
+      if (rect.width >= 180 && rect.width <= 480 && rect.left >= -8 &&
+          rect.left < 100 && rect.right < innerWidth * .48) {
+        edge = Math.max(edge, rect.right);
+      }
+    }
+    return edge;
+  }
   function positionPopup() {
     if (!state.popupOpen || !popupRoot.isConnected) return;
     const anchor = nodes.trigger.getBoundingClientRect();
     const rect = popupRoot.getBoundingClientRect();
     const { left, top } = calculatePopoverPosition(anchor, rect.width, rect.height,
-      innerWidth, innerHeight);
+      innerWidth, innerHeight, sidebarRightEdge(anchor));
     popupRoot.style.left = `${left}px`;
     popupRoot.style.top = `${top}px`;
   }
