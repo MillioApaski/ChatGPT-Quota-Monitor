@@ -169,14 +169,60 @@ test('popup closes on outside pointer, Escape, and switching into Work', () => {
   assert.match(source, /if \(state\.mode && state\.mode !== placement\) closePopup\(\)/);
   assert.match(source, /function deactivate\(\) \{\s*closePopup\(\)/);
 });
-test('popup aligns by trigger and stays in the viewport', () => {
-  const standard = calculatePopoverPosition({left:54, top:804, bottom:838}, 260, 170, 1645, 896);
-  assert.equal(standard.left, 47);
-  assert.equal(standard.top, 624);
-  const rightEdge = calculatePopoverPosition({left:1550, top:650, bottom:684}, 260, 170, 1645, 896);
-  assert.equal(rightEdge.left, 1373);
-  const topEdge = calculatePopoverPosition({left:6, top:20, bottom:55}, 260, 170, 1645, 896);
-  assert.equal(topEdge.left, 12);
-  assert.equal(topEdge.top, 65);
+test('popover opens beside the full sidebar, never directly over its button', () => {
+  const anchor = {left:40, right:76, top:804, bottom:840};
+  const normal = calculatePopoverPosition(anchor, 260, 170, 1645, 896, 310);
+  assert.equal(normal.left, 320);
+  assert.equal(normal.top, 670);
+  const narrow = calculatePopoverPosition({left:740,right:776,top:700,bottom:736},
+    260,170,1050,896,780);
+  assert.equal(narrow.left, 470);
+  assert.equal(narrow.top, 566);
+  const topEdge = calculatePopoverPosition({left:30,right:66,top:16,bottom:50},
+    260,170,900,700,300);
+  assert.equal(topEdge.left,310);
+  assert.equal(topEdge.top,12);
+  assert.match(source, /sidebarRightEdge\(anchor\)/);
 });
 
+const iconStart = source.indexOf('// BEGIN QUOTA_ICON_MODEL');
+const iconEnd = source.indexOf('// END QUOTA_ICON_MODEL');
+assert.ok(iconStart >= 0 && iconEnd > iconStart, 'icon model markers must exist');
+const { quotaIconModel } = runInNewContext(
+  source.slice(iconStart, iconEnd) + '\n({quotaIconModel})'
+);
+test('icon shows small 5-hour arc above large weekly arc, with real remaining percentages', () => {
+  const model = quotaIconModel({remaining:85}, {remaining:33});
+  assert.equal(model.layout, 'dual');
+  assert.equal(model.fivePercent,85);
+  assert.equal(model.weekPercent,33);
+  assert.match(source, /id="quota-ring-five"/);
+  assert.match(source, /id="quota-ring-week"/);
+  assert.match(source, /setProgress\(nodes\.fiveRing, fivePercent\)/);
+  assert.match(source, /setProgress\(nodes\.weekRing, weekPercent\)/);
+});
+test('no 5-hour window causes weekly quota to use one full circular ring', () => {
+  const model = quotaIconModel(null, {remaining:72});
+  assert.equal(model.layout,'single');
+  assert.equal(model.fivePercent,null);
+  assert.equal(model.weekPercent,72);
+  assert.match(source, /id="quota-ring-week-single"/);
+  assert.match(source, /nodes\.ringIcon\.classList\.toggle\('single', layout === 'single'\)/);
+});
+test('empty limits never masquerade as full/empty usage; percentages are clamped', () => {
+  const unknown = quotaIconModel(null,null);
+  assert.equal(unknown.layout,'single');
+  assert.equal(unknown.fivePercent,null);
+  assert.equal(unknown.weekPercent,null);
+  const clamped = quotaIconModel({remaining:125},{remaining:-4});
+  assert.equal(clamped.fivePercent,100);
+  assert.equal(clamped.weekPercent,0);
+  assert.match(source, /percent === null \? '0 100'/);
+});
+test('quota ring matches desktop diamond layout and native sidebar alignment', () => {
+  assert.match(source, /quota-ring-diamond/);
+  assert.match(source, /padding:0 8px 7px 19px/);
+  assert.match(source, /svg class="quota-icon" viewBox="0 0 36 36"/);
+  assert.match(source, /popup opens beside the nav/);
+  assert.match(source, /aria-label', label/);
+});
