@@ -221,14 +221,13 @@ test('empty limits never masquerade as full/empty usage; percentages are clamped
 });
 test('quota ring matches desktop diamond layout and native sidebar alignment', () => {
   assert.match(source, /quota-ring-diamond/);
-  assert.match(source, /padding:3px 10px 3px var\\(--cg-icon-indent, 16px\\)/);
-  assert.match(source, /alignSidebarTrigger\\(sidebar\\.profileButton\\)/);
-  assert.match(source, /class="sidebar-trigger-label">额度<\\/span>/);
-  assert.match(source, /svg class="quota-icon" viewBox="0 0 36 36"/);
-  assert.match(source, /popup opens beside the nav/);
-  assert.match(source, /aria-label', label/);
+  assert.ok(source.includes('padding:3px 10px 3px var(--cg-icon-indent, 16px)'));
+  assert.ok(source.includes('alignSidebarTrigger(sidebar.profileButton)'));
+  assert.ok(source.includes('class="sidebar-trigger-label">额度</span>'));
+  assert.ok(source.includes('svg class="quota-icon" viewBox="0 0 36 36"'));
+  assert.ok(source.includes('popup opens beside the nav'));
+  assert.ok(source.includes("aria-label', label"));
 });
-
 
 test('popover entries bind to the shadow root that actually owns their DOM', () => {
   const markup = source.match(/sidebarCard\.innerHTML = \`([\s\S]*?)\`;/);
