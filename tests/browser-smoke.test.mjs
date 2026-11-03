@@ -4,17 +4,20 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
-test('real browser mounts quota sidebar and starts usage fetch without uncaught errors', () => {
+for (const variant of [
+  {query:'',name:'standard ChatGPT profile'},
+  {query:'?no-testid=1',name:'renamed profile selector'},
+  {query:'?bad-avatar=1',name:'profile avatar style exception'},
+]) test('real Chromium sidebar mount: '+variant.name, () => {
  const chromeCandidates=['/usr/bin/google-chrome','/usr/bin/chromium','/opt/google/chrome/chrome'];
  const chrome=chromeCandidates.find(p=>existsSync(p));
  assert.ok(chrome,'Chrome or Chromium required for browser integration smoke test');
- const uri=new URL('./browser-smoke.html', import.meta.url).href;
+ const uri=new URL('./browser-smoke.html', import.meta.url).href + variant.query;
  const stdout=execFileSync(chrome,[
   '--headless=new','--no-sandbox','--disable-gpu','--disable-dev-shm-usage',
   '--allow-file-access-from-files','--window-size=1450,900',
   '--virtual-time-budget=1800','--dump-dom',uri
  ],{timeout:20000,encoding:'utf8',stdio:['ignore','pipe','ignore']});
- const payload=stdout.match(/data-smoke-result="([^"]+)"/);
  // HTML attributes escape quotes, so parse the printed pre element if present.
  const pre=stdout.match(/<pre id="result">([^<]+)<\/pre>/);
  assert.ok(pre,'browser fixture must emit status: '+stdout.slice(-800));
