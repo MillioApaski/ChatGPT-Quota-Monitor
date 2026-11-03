@@ -88,12 +88,13 @@ test('rejects normal chat text and unrelated sidebar content', () => {
   assert.equal(isRightWorkPanelPair(header(1415, 82), header(1020, 155), 1708, 896), false);
   assert.equal(isRightWorkPanelPair(header(1415, 82), header(1415, 155), 600, 800), false);
 });
-test('only mounts within recognized Work panel; regular chat must not fetch quota', () => {
+test('mounts exactly one display in Work or expanded sidebar', () => {
   assert.doesNotMatch(source, /position:fixed/);
   assert.doesNotMatch(source, /document\.documentElement\.append\(root\)/);
-  assert.match(source, /if \(!panel\) \{ deactivate\(\); return; \}/);
+  assert.match(source, /workPanel \? null : locateSidebarInsertion\(\)/);
+  assert.match(source, /if \(!workPanel && !sidebar\) \{ deactivate\(\); return; \}/);
+  assert.match(source, /root\.dataset\.placement = placement/);
   assert.match(source, /if \(!state\.active \|\| document\.hidden \|\| state\.loading\) return;/);
-  assert.match(source, /if \(root\.parentElement !== panel\) panel\.appendChild\(root\)/);
   assert.match(source, /observer\.observe\(document\.body, \{ childList: true, subtree: true \}\)/);
 });
 
@@ -102,4 +103,45 @@ test('quota section keeps native Work sidebar content gutters', () => {
   assert.match(source, /\.card\s*\{[^}]*padding:\s*12px 16px 14px/);
   assert.match(source, /border-top:\s*1px solid var\(--line\)/);
   assert.match(source, /\.body\s*\{\s*padding:\s*0;/);
+});
+
+
+const sidebarBegin = source.indexOf('// BEGIN SIDEBAR_PREDICATES');
+const sidebarEnd = source.indexOf('// END SIDEBAR_PREDICATES');
+assert.ok(sidebarBegin >= 0 && sidebarEnd > sidebarBegin, 'sidebar placement predicates must exist');
+const { isExpandedSidebarProfile } = runInNewContext(
+  source.slice(sidebarBegin, sidebarEnd) + '\n({ isExpandedSidebarProfile })'
+);
+const profile = (left, top, width = 245, height = 42) => ({
+  left, top, width, height, right: left + width, bottom: top + height,
+});
+
+test('web expanded sidebar can mount quota card above account button', () => {
+  assert.equal(isExpandedSidebarProfile(profile(50, 830), 1645, 896), true);
+  assert.equal(isExpandedSidebarProfile(profile(16, 820, 260), 1708, 896), true);
+});
+test('collapsed rail, hidden sidebar or mobile viewport do not mount', () => {
+  assert.equal(isExpandedSidebarProfile(profile(10, 835, 38, 38), 1645, 896), false);
+  assert.equal(isExpandedSidebarProfile(profile(50, 830), 650, 896), false);
+  assert.equal(isExpandedSidebarProfile(profile(800, 830), 1645, 896), false);
+  assert.equal(isExpandedSidebarProfile(profile(50, 200), 1645, 896), false);
+});
+test('optional credits are shown only if account supplies an explicit value or no-credit flag', () => {
+  const p = payload(quota(18000, 10), quota(604800, 20));
+  assert.equal(parseUsage(p).credits, null);
+  assert.equal(parseUsage({ ...p, credits: { balance: '2.50', has_credits: true } }).credits.balance, 2.5);
+  assert.equal(parseUsage({ ...p, credits: { balance: 0, has_credits: false } }).credits.balance, 0);
+  assert.equal(parseUsage({ ...p, credits: { has_credits: false } }).credits.balance, 0);
+  assert.equal(parseUsage({ ...p, credits: { unlimited: true } }).credits.unlimited, true);
+  assert.equal(parseUsage({ ...p, credits: { balance: 'nonsense', has_credits: true } }).credits, null);
+});
+test('sidebar imitates desktop plan/limits/credits/manage-usage layout', () => {
+  assert.match(source, /id="sidebar-plan"/);
+  assert.match(source, /id="sidebar-five"/);
+  assert.match(source, /id="sidebar-week"/);
+  assert.match(source, /id="sidebar-credits"/);
+  assert.match(source, /href="\/settings\/usage"/);
+  assert.match(source, /\[data-testid="accounts-profile-button"\]/);
+  assert.match(source, /\[data-app-action-sidebar-scroll\]/);
+  assert.match(source, /nodes\.sidebarCredits\.textContent = creditText/);
 });
