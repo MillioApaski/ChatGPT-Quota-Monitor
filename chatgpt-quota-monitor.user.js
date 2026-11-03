@@ -1,17 +1,17 @@
 // ==UserScript==
 // @name         ChatGPT Quota Monitor (Work / Codex)
 // @namespace    https://github.com/MillioApaski/ChatGPT-Quota-Monitor
-// @version      1.3.5
+// @version      1.3.6
 // @author       ChatGPT (GPT-6)
 // @license      MIT
 // @homepageURL  https://github.com/MillioApaski/ChatGPT-Quota-Monitor
 // @supportURL   https://github.com/MillioApaski/ChatGPT-Quota-Monitor/issues
 // @updateURL    https://raw.githubusercontent.com/MillioApaski/ChatGPT-Quota-Monitor/main/chatgpt-quota-monitor.user.js
 // @downloadURL  https://raw.githubusercontent.com/MillioApaski/ChatGPT-Quota-Monitor/main/chatgpt-quota-monitor.user.js
-// @description  可靠识别ChatGPT侧栏账户区域，展示5h/周额度环形进度与点击弹窗。
+// @description  CSP兼容的侧栏额度监控，5h/周进度圆环与点击弹窗，支持挂载状态诊断。
 // @match        https://chatgpt.com/*
 // @run-at       document-idle
-// @grant        none
+// @sandbox      DOM
 // @noframes
 // ==/UserScript==
 
@@ -27,7 +27,23 @@
     storageKey: 'chatgpt-work-quota-docked-v1',
   });
 
-  if (document.getElementById('cg-work-quota-root')) return;
+  // A low-noise diagnostic on <html> distinguishes "not injected" from
+  // "injected but no matching sidebar". Never expose tokens or account data.
+  const setDiagnostic = (status, reason = '') => {
+    const html = document.documentElement;
+    if (!html) return;
+    html.dataset.cgQuotaMonitor = '1.3.6';
+    html.dataset.cgQuotaState = status;
+    if (reason) html.dataset.cgQuotaReason = String(reason).slice(0, 80);
+    else delete html.dataset.cgQuotaReason;
+  };
+  setDiagnostic('started');
+  console.info('[ChatGPT Quota Monitor] v1.3.6 started (DOM sandbox)');
+
+  if (document.getElementById('cg-work-quota-root')) {
+    setDiagnostic('duplicate-instance');
+    return;
+  }
 
   const root = document.createElement('div');
   root.id = 'cg-work-quota-root';
@@ -905,7 +921,11 @@
   function reconcileMount() {
     const workPanel = locateWorkPanel();
     const sidebar = workPanel ? null : locateSidebarInsertion();
-    if (!workPanel && !sidebar) { deactivate(); return; }
+    if (!workPanel && !sidebar) {
+      setDiagnostic('profile-not-found');
+      deactivate();
+      return;
+    }
     const placement = workPanel ? 'work' : 'sidebar';
     const newlyActive = !state.active;
     // Switching between Work and regular chat always dismisses the popover.
@@ -921,6 +941,7 @@
     state.active = true;
     state.mode = placement;
     state.panel = workPanel;
+    setDiagnostic(placement === 'work' ? 'work-mounted' : 'sidebar-mounted');
     if (sidebar) {
       try {
         alignSidebarTrigger(sidebar.profileButton);
@@ -947,6 +968,7 @@
       lastMountError = '';
     } catch (error) {
       const message = String(error?.message || error);
+      setDiagnostic('mount-error', error?.name || 'Error');
       if (lastMountError !== message) {
         console.error('[ChatGPT Quota Monitor] 侧栏挂载异常:', error);
         lastMountError = message;
