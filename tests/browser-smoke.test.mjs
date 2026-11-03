@@ -8,6 +8,7 @@ for (const variant of [
   {query:'',name:'standard ChatGPT profile'},
   {query:'?no-testid=1',name:'renamed profile selector'},
   {query:'?bad-avatar=1',name:'profile avatar style exception'},
+  {query:'?plain-profile=1',name:'plain div account row without button or role'},
 ]) test('real Chromium sidebar mount: '+variant.name, () => {
  const chromeCandidates=['/usr/bin/google-chrome','/usr/bin/chromium','/opt/google/chrome/chrome'];
  const chrome=chromeCandidates.find(p=>existsSync(p));
