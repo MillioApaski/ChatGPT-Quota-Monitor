@@ -89,7 +89,8 @@ test('rejects normal chat text and unrelated sidebar content', () => {
   assert.equal(isRightWorkPanelPair(header(1415, 82), header(1415, 155), 600, 800), false);
 });
 test('mounts exactly one display in Work or expanded sidebar', () => {
-  assert.doesNotMatch(source, /position:fixed/);
+  assert.match(source, /position:fixed/); // Portaled popup, never a permanent floating quota card.
+  assert.match(source, /if \(!state\.popupOpen \|\| !popupRoot\.isConnected\) return;/);
   assert.doesNotMatch(source, /document\.documentElement\.append\(root\)/);
   assert.match(source, /workPanel \? null : locateSidebarInsertion\(\)/);
   assert.match(source, /if \(!workPanel && !sidebar\) \{ deactivate\(\); return; \}/);
@@ -145,3 +146,37 @@ test('sidebar imitates desktop plan/limits/credits/manage-usage layout', () => {
   assert.match(source, /\[data-app-action-sidebar-scroll\]/);
   assert.match(source, /nodes\.sidebarCredits\.textContent = creditText/);
 });
+
+const popoverBegin = source.indexOf('// BEGIN POPOVER_POSITION');
+const popoverEnd = source.indexOf('// END POPOVER_POSITION');
+assert.ok(popoverBegin > 0 && popoverEnd > popoverBegin);
+const { calculatePopoverPosition } = runInNewContext(
+  source.slice(popoverBegin, popoverEnd) + '\n({ calculatePopoverPosition })'
+);
+test('quota popup is not shown until the button is clicked', () => {
+  assert.match(source, /shadow\.append\(trigger\)/);
+  assert.match(source, /nodes\.trigger\.addEventListener\('click'/);
+  assert.match(source, /if \(state\.popupOpen\) \{ closePopup\(\); return; \}/);
+  assert.match(source, /document\.body\.appendChild\(popupRoot\)/);
+  assert.doesNotMatch(source, /shadow\.append\(sidebarCard\)/);
+  assert.match(source, /popupShadow\.append\(css\.cloneNode\(true\), sidebarCard\)/);
+  assert.match(source, /trigger\.setAttribute\('aria-expanded', 'false'\)/);
+});
+test('popup closes on outside pointer, Escape, and switching into Work', () => {
+  assert.match(source, /event\.composedPath\(\)/);
+  assert.match(source, /!path\.includes\(popupRoot\) && !path\.includes\(root\)/);
+  assert.match(source, /event\.key === 'Escape' && state\.popupOpen/);
+  assert.match(source, /if \(state\.mode && state\.mode !== placement\) closePopup\(\)/);
+  assert.match(source, /function deactivate\(\) \{\s*closePopup\(\)/);
+});
+test('popup aligns by trigger and stays in the viewport', () => {
+  const standard = calculatePopoverPosition({left:54, top:804, bottom:838}, 260, 170, 1645, 896);
+  assert.equal(standard.left, 47);
+  assert.equal(standard.top, 624);
+  const rightEdge = calculatePopoverPosition({left:1550, top:650, bottom:684}, 260, 170, 1645, 896);
+  assert.equal(rightEdge.left, 1373);
+  const topEdge = calculatePopoverPosition({left:6, top:20, bottom:55}, 260, 170, 1645, 896);
+  assert.equal(topEdge.left, 12);
+  assert.equal(topEdge.top, 65);
+});
+
