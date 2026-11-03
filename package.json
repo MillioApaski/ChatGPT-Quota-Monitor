@@ -1,8 +1,8 @@
 {
   "name": "chatgpt-quota-monitor",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
-  "description": "Desktop-inspired ChatGPT sidebar quota card and Work panel monitor",
+  "description": "Click-to-open quota popover for ChatGPT web and integrated Work panel meter",
   "scripts": {
     "test": "node --check chatgpt-quota-monitor.user.js && node --test tests/*.test.mjs"
   },
