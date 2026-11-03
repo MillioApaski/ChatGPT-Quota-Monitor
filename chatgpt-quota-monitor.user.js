@@ -743,7 +743,10 @@
       const score = (isImage ? 25 : 0) + (chroma > .22 ? 18 * chroma : 0) +
         (round ? 3 : 0) + (hasBg ? 1 : 0) + (hasInitials ? 3 : 0) -
         Math.abs(rect.width - 36) * .08 - (rect.left - profile.left) * .008;
-      if (score > bestScore) { bestScore = score; best = rect; }
+      if (score > bestScore) {
+        bestScore = score;
+        best = { rect, reliable: isImage || (round && chroma > .30) };
+      }
     }
     return best;
   }
@@ -771,7 +774,7 @@
   }
 
   // BEGIN SIDEBAR_ALIGNMENT
-  function reconcileProfileAnchors(avatarCenter, nameLeft, avatarWidth) {
+  function reconcileProfileAnchors(avatarCenter, nameLeft, avatarWidth, reliableAvatar = false) {
     // ChatGPT profile has a ~12px avatar-to-text gap. If the DOM scanner
     // chose a neutral wrapper/text inset instead, preserve their midpoint
     // while correcting the spacing. A 36px avatar implies 18+12 = 30px
@@ -781,6 +784,11 @@
     const mismatch = nameLeft - avatarCenter - targetDistance;
     if (Math.abs(mismatch) < 5 || Math.abs(mismatch) > 30) {
       return { avatarCenter, nameLeft };
+    }
+    if (reliableAvatar) {
+      // Real colored/photo avatar position is stronger evidence than a text
+      // wrapper's inset. Keep its center, align label to the account gap.
+      return { avatarCenter, nameLeft: avatarCenter + targetDistance };
     }
     const correction = mismatch / 2;
     return {
@@ -803,12 +811,13 @@
     const profile = profileButton.getBoundingClientRect();
     if (!host.width || !profile.width) return;
     const avatar = locateProfileAvatar(profileButton);
+    const avatarRect = avatar?.rect;
     const measuredName = locateProfileNameLeft(profileButton,
-      avatar?.right ?? (profile.left + 24));
-    const measuredCenter = avatar ? avatar.left + avatar.width / 2
+      avatarRect?.right ?? (profile.left + 24));
+    const measuredCenter = avatarRect ? avatarRect.left + avatarRect.width / 2
       : measuredName !== null ? measuredName - 30 : profile.left + 18;
     const anchors = reconcileProfileAnchors(measuredCenter, measuredName,
-      avatar?.width ?? 36);
+      avatarRect?.width ?? 36, avatar?.reliable ?? false);
     const aligned = sidebarAlignment(anchors.avatarCenter,
       anchors.nameLeft, host.left, 28);
     const ringLeft = `${aligned.ringLeft}px`;
