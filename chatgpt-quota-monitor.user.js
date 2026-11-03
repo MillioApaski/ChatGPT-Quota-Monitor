@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT Quota Monitor (Work / Codex)
 // @namespace    https://github.com/MillioApaski/ChatGPT-Quota-Monitor
-// @version      1.3.0
+// @version      1.3.1
 // @author       ChatGPT (GPT-6)
 // @license      MIT
 // @homepageURL  https://github.com/MillioApaski/ChatGPT-Quota-Monitor
@@ -91,15 +91,20 @@
        The popup is rendered in a separate body portal to escape overflow clipping. */
     :host([data-placement="work"]) .sidebar-trigger { display:none; }
     :host([data-placement="sidebar"]) .card { display:none; }
-    /* Match the profile avatar's icon center in the expanded web sidebar. */
-    :host([data-placement="sidebar"]) { padding:0 8px 7px 19px; }
-    .sidebar-trigger { width:34px; height:34px; padding:3px; display:grid; place-items:center;
-      border-radius:10px; color:var(--muted); background:transparent;
-      cursor:pointer; transition:background .15s ease, color .15s ease; }
+    /* Render as a native-sized nav row, not an oversized square stuck to the viewport edge.
+       --cg-icon-indent is computed from the actual account-avatar position. */
+    :host([data-placement="sidebar"]) { padding:0; }
+    .sidebar-trigger { width:100%; height:44px; padding:3px 10px 3px var(--cg-icon-indent, 16px);
+      display:flex; align-items:center; justify-content:flex-start; gap:12px;
+      border-radius:9px; color:var(--fg); background:transparent;
+      cursor:pointer; text-align:left; transition:background .15s ease; }
     .sidebar-trigger:hover, .sidebar-trigger[aria-expanded="true"] {
-      color:var(--fg); background:var(--track);
+      background:var(--track);
     }
-    .sidebar-trigger svg { width:30px; height:30px; max-width:100%; max-height:100%; overflow:visible; }
+    .sidebar-trigger .quota-icon { width:34px; height:34px; min-width:34px;
+      max-width:34px; max-height:34px; overflow:visible; flex-shrink:0; }
+    .sidebar-trigger-label { color:var(--fg); font-size:14px; font-weight:400;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .quota-ring-track { fill:none; stroke:var(--muted); opacity:.32;
       stroke-width:2.8; stroke-linecap:round; }
     .quota-ring-progress { fill:none; stroke:var(--fg); stroke-width:2.8;
@@ -212,7 +217,7 @@
         pathLength="100" transform="rotate(-90 18 18)"/>
     </g>
     <path class="quota-ring-diamond" d="M18 13.4 22.6 18 18 22.6 13.4 18Z"/>
-  </svg>`;
+  </svg><span class="sidebar-trigger-label">额度</span>`;
   shadow.append(trigger);
 
   const $ = (id) => shadow.getElementById(id);
@@ -222,8 +227,12 @@
     fiveValue: $('five-value'), fiveBar: $('five-bar'), fiveReset: $('five-reset'),
     weekValue: $('week-value'), weekBar: $('week-bar'), weekReset: $('week-reset'),
     status: $('status'), updated: $('updated'),
-    sidebarPlan: $('sidebar-plan'), sidebarFive: $('sidebar-five'),
-    sidebarWeek: $('sidebar-week'), sidebarCredits: $('sidebar-credits'),
+    // Sidebar card is moved into popupShadow. Look up *all* its nodes there.
+    // Otherwise the initial render throws before refresh() can even start.
+    sidebarPlan: popupShadow.getElementById('sidebar-plan'),
+    sidebarFive: popupShadow.getElementById('sidebar-five'),
+    sidebarWeek: popupShadow.getElementById('sidebar-week'),
+    sidebarCredits: popupShadow.getElementById('sidebar-credits'),
     sidebarRefresh: popupShadow.getElementById('sidebar-refresh'),
     ringIcon: shadow.querySelector('.quota-icon'),
     fiveRing: shadow.getElementById('quota-ring-five'),
@@ -665,6 +674,23 @@
   }
   // END SIDEBAR_PREDICATES
 
+  // Match the icon location to the *actual* avatar/button geometry, not a hard-coded x offset.
+  function alignSidebarTrigger(profileButton) {
+    if (!profileButton?.isConnected) return;
+    const host = root.getBoundingClientRect();
+    const profile = profileButton.getBoundingClientRect();
+    if (!host.width || !profile.width) return;
+    const avatar = profileButton.querySelector('img, [data-testid*="avatar"]');
+    const a = avatar?.getBoundingClientRect();
+    const avatarLeft = a && a.width >= 24 && a.width <= 52
+      ? a.left : profile.left + 12;
+    const indent = Math.max(0, Math.min(88, Math.round(avatarLeft - host.left)));
+    const cssValue = `${indent}px`;
+    if (root.style.getPropertyValue('--cg-icon-indent') !== cssValue) {
+      root.style.setProperty('--cg-icon-indent', cssValue);
+    }
+  }
+
   // 2026 年网页的展开侧栏账户入口；不可用时退回侧栏滚动区旁的 footer。
   // 不挂载到窄图标 rail 或被 inert 隐藏的重复导航树上。
   function locateSidebarInsertion() {
@@ -676,7 +702,7 @@
       const parent = button.parentElement;
       const anchor = parent && parent.children.length === 1 ? parent : button;
       if (anchor.parentElement && anchor.parentElement !== document.body) {
-        return { parent: anchor.parentElement, anchor };
+        return { parent: anchor.parentElement, anchor, profileButton: button };
       }
     }
     for (const scroll of document.querySelectorAll('[data-app-action-sidebar-scroll]')) {
@@ -686,7 +712,8 @@
       const button = footer?.querySelector('button[aria-haspopup="menu"]');
       if (!button || !isExpandedSidebarProfile(button.getBoundingClientRect(),
         innerWidth, innerHeight)) continue;
-      return { parent: footer, anchor: footer.firstChild === root ? root.nextSibling : footer.firstChild };
+      return { parent: footer, anchor: footer.firstChild === root ? root.nextSibling : footer.firstChild,
+        profileButton: button };
     }
     return null;
   }
@@ -723,6 +750,7 @@
     state.active = true;
     state.mode = placement;
     state.panel = workPanel;
+    if (sidebar) alignSidebarTrigger(sidebar.profileButton);
     syncTheme();
     render();
     if (state.popupOpen) positionPopup();
