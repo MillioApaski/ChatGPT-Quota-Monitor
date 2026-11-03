@@ -87,3 +87,7 @@ The sidebar profile locator now tolerates renamed `data-testid` attributes or mi
 ### v1.3.6 CSP-aware sandbox and safe diagnostics
 
 The userscript now selects Tampermonkey `@sandbox DOM` and no longer uses `@grant none`, avoiding unnecessary main-world injection on pages with restrictive CSP. It does not bypass or modify ChatGPT security headers. In the browser console inspect `document.documentElement.dataset.cgQuotaMonitor` for the loaded version and `document.documentElement.dataset.cgQuotaState` for `started`, `profile-not-found`, `sidebar-mounted`, `work-mounted`, or `mount-error`. These values contain no credentials or account details.
+
+### v1.3.7 robust profile discovery
+
+A `profile-not-found` state no longer depends solely on ChatGPT's button tags and exact nav ancestor geometry. A conservative fallback scans the visible bottom-left plan label (e.g. Plus or Pro) and climbs to the account row, even when it is a plain div without role or testid. Mounted profiles are reused across layout changes. The safe `data-cg-quota-reason` diagnostics list counts, not names or credentials. The Chromium suite includes a plain-div account footer variant.
