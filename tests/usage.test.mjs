@@ -280,7 +280,7 @@ test('clamps offsets for narrow sidebar variants', () => {
 test('both progress tracks and their consumed portions follow true circular paths', () => {
   const markup = source.slice(source.indexOf('trigger.innerHTML = '), source.indexOf('shadow.append(trigger)'));
   const expectedTop = 'M9.65 6.51 A14.2 14.2 0 0 1 26.35 6.51';
-  const expectedBottom = 'M29.49 9.65 A14.2 14.2 0 1 1 6.51 9.65';
+  const expectedBottom = 'M6.51 9.65 A14.2 14.2 0 1 0 29.49 9.65';
   for (const type of ['track', 'progress', 'used']) {
     assert.ok(markup.includes('class="quota-ring-' + type + '"'), type + ' exists');
   }
@@ -303,6 +303,52 @@ test('uses actual consumed percentages and marks small usage in contrasting colo
   assert.ok(source.includes('stroke-linecap:round'));
   assert.equal(100 - quotaIconModel({remaining:92}, {remaining:99}).fivePercent, 8);
   assert.equal(100 - quotaIconModel({remaining:92}, {remaining:99}).weekPercent, 1);
+});
+
+
+test('upper and lower rings progress left-to-right with used tails on the same side', () => {
+  // Upper: left end (9.65) -> right end (26.35).
+  // Lower: left end (6.51) -> right end (29.49) by the long lower arc.
+  const sourcePart = source.slice(source.indexOf('trigger.innerHTML = '), source.indexOf('shadow.append(trigger)'));
+  const top = 'M9.65 6.51 A14.2 14.2 0 0 1 26.35 6.51';
+  const lower = 'M6.51 9.65 A14.2 14.2 0 1 0 29.49 9.65';
+  assert.equal(sourcePart.split('d="' + top + '"').length - 1, 3);
+  assert.equal(sourcePart.split('d="' + lower + '"').length - 1, 3);
+  assert.ok(sourcePart.includes('id="quota-ring-five-used"'));
+  assert.ok(sourcePart.includes('id="quota-ring-week-used"'));
+  assert.ok(sourcePart.includes('id="quota-ring-week-single-used"'));
+  assert.ok(source.includes('node.style.strokeDashoffset ='));
+});
+
+const alignmentHelpersStart = source.indexOf('// BEGIN SIDEBAR_ALIGNMENT');
+const alignmentHelpersEnd = source.indexOf('// END SIDEBAR_ALIGNMENT');
+const { reconcileProfileAnchors } = runInNewContext(
+  source.slice(alignmentHelpersStart, alignmentHelpersEnd) + '\n({ reconcileProfileAnchors })'
+);
+test('reconciles screenshot-like avatar and text drift without absolute pixel guesses', () => {
+  // Reported screenshot: ring center ~51, label x~96; profile icon center ~56, name x~87.
+  const anchors = reconcileProfileAnchors(51, 96, 36);
+  assert.equal(anchors.avatarCenter, 58.5);
+  assert.equal(anchors.nameLeft, 88.5);
+  assert.equal(anchors.nameLeft - anchors.avatarCenter, 30);
+  const layout = sidebarAlignment(anchors.avatarCenter, anchors.nameLeft, 15, 28);
+  assert.ok(Math.abs(15 + layout.ringLeft + 14 - 56) <= 3.5);
+  assert.ok(Math.abs(15 + layout.labelLeft - 87) <= 3.5);
+});
+test('reconciliation does not shift correctly aligned account rows or unsafe offsets', () => {
+  assert.deepEqual({ ...reconcileProfileAnchors(56, 86, 36) },
+    { avatarCenter: 56, nameLeft: 86 });
+  assert.deepEqual({ ...reconcileProfileAnchors(56, null, 36) },
+    { avatarCenter: 56, nameLeft: null });
+  assert.deepEqual({ ...reconcileProfileAnchors(56, 140, 36) },
+    { avatarCenter: 56, nameLeft: 140 });
+});
+test('avatar discovery prefers colored initials rather than neutral outer wrappers', () => {
+  assert.ok(source.includes('function profileColorChroma(color)'));
+  assert.ok(source.includes('chroma > .22 ? 18 * chroma'));
+  assert.ok(source.includes('hasInitials ? 3'));
+  assert.ok(source.includes('locateProfileAvatar(profileButton)'));
+  assert.ok(source.includes('const anchors = reconcileProfileAnchors(measuredCenter, measuredName'));
 });
 
 test('preserves Work-only embedded meter and click-to-open normal chat popup', () => {
