@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         ChatGPT Quota Monitor (Work / Codex)
 // @namespace    https://github.com/MillioApaski/ChatGPT-Quota-Monitor
-// @version      1.3.4
+// @version      1.3.5
 // @author       ChatGPT (GPT-6)
 // @license      MIT
 // @homepageURL  https://github.com/MillioApaski/ChatGPT-Quota-Monitor
 // @supportURL   https://github.com/MillioApaski/ChatGPT-Quota-Monitor/issues
 // @updateURL    https://raw.githubusercontent.com/MillioApaski/ChatGPT-Quota-Monitor/main/chatgpt-quota-monitor.user.js
 // @downloadURL  https://raw.githubusercontent.com/MillioApaski/ChatGPT-Quota-Monitor/main/chatgpt-quota-monitor.user.js
-// @description  统一方向的5h/周额度圆弧，自动校准侧栏图标和文字位置，点击查看详情。
+// @description  可靠识别ChatGPT侧栏账户区域，展示5h/周额度环形进度与点击弹窗。
 // @match        https://chatgpt.com/*
 // @run-at       document-idle
 // @grant        none
@@ -830,31 +830,62 @@
     }
   }
 
-  // 2026 年网页的展开侧栏账户入口；不可用时退回侧栏滚动区旁的 footer。
-  // 不挂载到窄图标 rail 或被 inert 隐藏的重复导航树上。
-  function locateSidebarInsertion() {
-    const profileButtons = document.querySelectorAll('[data-testid="accounts-profile-button"]');
-    for (const button of profileButtons) {
-      if (button.closest('[inert], [aria-hidden="true"]')) continue;
-      if (!isExpandedSidebarProfile(button.getBoundingClientRect(),
-        innerWidth, innerHeight)) continue;
-      const parent = button.parentElement;
-      const anchor = parent && parent.children.length === 1 ? parent : button;
-      if (anchor.parentElement && anchor.parentElement !== document.body) {
-        return { parent: anchor.parentElement, anchor, profileButton: button };
+  // BEGIN SIDEBAR_PROFILE_DETECTION
+  function looksLikeProfileLocation(rect, viewportWidth, viewportHeight) {
+    return rect.width >= 30 && rect.height >= 24 && rect.left >= -6 &&
+      rect.right <= Math.min(500, viewportWidth * .45) &&
+      rect.top >= viewportHeight * .55 &&
+      rect.bottom <= viewportHeight + 24;
+  }
+  // END SIDEBAR_PROFILE_DETECTION
+
+  function isInExpandedNavigation(element) {
+    for (let parent = element?.parentElement; parent && parent !== document.body;
+         parent = parent.parentElement) {
+      const rect = parent.getBoundingClientRect();
+      if (rect.width >= 185 && rect.width <= 455 && rect.height >= 180 &&
+          rect.left >= -12 && rect.left <= 110 &&
+          rect.bottom >= window.innerHeight - 45) return true;
+    }
+    return false;
+  }
+
+  function profileCandidate() {
+    // The data-testid is an internal detail that changes with UI releases.
+    // Do not silently hide the quota monitor if ChatGPT renames this one node.
+    const targets = Array.from(document.querySelectorAll(
+      '[data-testid="accounts-profile-button"],' +
+      'button[aria-haspopup="menu"],[role="button"][aria-haspopup="menu"]'
+    ));
+    const usable = [];
+    for (const candidate of targets) {
+      if (candidate.closest('[inert],[aria-hidden="true"],[hidden]')) continue;
+      const rect = candidate.getBoundingClientRect();
+      if (!looksLikeProfileLocation(rect, innerWidth, innerHeight)) continue;
+      if (!isInExpandedNavigation(candidate)) continue;
+      const style = getComputedStyle(candidate);
+      if (style.display === 'none' || style.visibility === 'hidden') continue;
+      const preferred = candidate.matches('[data-testid="accounts-profile-button"]');
+      const label = candidate.textContent?.trim() || '';
+      const plan = /\b(Plus|Pro|Free|Go|Business|Enterprise|Edu)\b/.test(label);
+      const circle = candidate.querySelector('img,[class*="avatar"],[data-testid*="avatar"]');
+      if (preferred || plan || (circle && label.length > 1)) {
+        usable.push({ candidate, score: (preferred ? 100 : 0) +
+          (plan ? 20 : 0) + (circle ? 5 : 0) + rect.width * .001 });
       }
     }
-    for (const scroll of document.querySelectorAll('[data-app-action-sidebar-scroll]')) {
-      if (scroll.closest('[inert], [aria-hidden="true"]')) continue;
-      const footer = [scroll.nextElementSibling, scroll.parentElement?.nextElementSibling]
-        .find((el) => el?.querySelector('button[aria-haspopup="menu"]'));
-      const button = footer?.querySelector('button[aria-haspopup="menu"]');
-      if (!button || !isExpandedSidebarProfile(button.getBoundingClientRect(),
-        innerWidth, innerHeight)) continue;
-      return { parent: footer, anchor: footer.firstChild === root ? root.nextSibling : footer.firstChild,
-        profileButton: button };
-    }
-    return null;
+    usable.sort((a,b) => b.score - a.score);
+    return usable[0]?.candidate || null;
+  }
+
+  function locateSidebarInsertion() {
+    const button = profileCandidate();
+    if (!button) return null;
+    const parent = button.parentElement;
+    if (!parent) return null;
+    const anchor = parent.children.length === 1 ? parent : button;
+    if (!anchor.parentElement || anchor.parentElement === document.body) return null;
+    return { parent: anchor.parentElement, anchor, profileButton: button };
   }
 
   function deactivate() {
@@ -889,7 +920,15 @@
     state.active = true;
     state.mode = placement;
     state.panel = workPanel;
-    if (sidebar) alignSidebarTrigger(sidebar.profileButton);
+    if (sidebar) {
+      try {
+        alignSidebarTrigger(sidebar.profileButton);
+      } catch (error) {
+        // A profile DOM/layout change must never make the quota control vanish.
+        // Default CSS still yields an operable button and live quota data.
+        console.warn('[ChatGPT Quota Monitor] 账号对齐失败，使用默认布局', error);
+      }
+    }
     syncTheme();
     render();
     if (state.popupOpen) positionPopup();
@@ -900,11 +939,25 @@
       void refresh();
     }
   }
+  let lastMountError = '';
+  function runMountSafely() {
+    try {
+      reconcileMount();
+      lastMountError = '';
+    } catch (error) {
+      const message = String(error?.message || error);
+      if (lastMountError !== message) {
+        console.error('[ChatGPT Quota Monitor] 侧栏挂载异常:', error);
+        lastMountError = message;
+      }
+      // A scan exception is not fatal; the periodic check retries.
+    }
+  }
   function scheduleScan() {
     if (state.scanTimer != null) return;
     state.scanTimer = setTimeout(() => {
       state.scanTimer = null;
-      reconcileMount();
+      runMountSafely();
     }, CONFIG.scanThrottleMs);
   }
   const observer = new MutationObserver(scheduleScan);
@@ -944,5 +997,5 @@
   setInterval(() => {
     if (state.active && !document.hidden) render();
   }, 1000);
-  reconcileMount();
+  runMountSafely();
 })();
