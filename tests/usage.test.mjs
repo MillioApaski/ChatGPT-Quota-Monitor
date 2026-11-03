@@ -219,21 +219,20 @@ test('empty limits never masquerade as full/empty usage; percentages are clamped
   assert.equal(clamped.weekPercent,0);
   assert.match(source, /percent === null \? '0 100'/);
 });
-test('quota ring matches desktop diamond layout and native sidebar alignment', () => {
-  assert.match(source, /quota-ring-diamond/);
-  assert.ok(source.includes('padding:4px 8px 4px var(--cg-icon-indent, 16px)'));
-  assert.ok(source.includes('alignSidebarTrigger(sidebar.profileButton)'));
+test('quota trigger retains desktop-like diamond and native sidebar row', () => {
+  assert.ok(source.includes('quota-ring-diamond'));
   assert.ok(source.includes('class="sidebar-trigger-label">额度</span>'));
   assert.ok(source.includes('svg class="quota-icon" viewBox="0 0 36 36"'));
-  assert.ok(source.includes('popup opens beside the nav'));
+  assert.ok(source.includes('width:100%; height:44px'));
+  assert.ok(source.includes('left:var(--cg-ring-left, 16px)'));
+  assert.ok(source.includes('left:var(--cg-label-left, 64px)'));
+  assert.ok(source.includes('width:28px; height:28px'));
   assert.ok(source.includes("aria-label', label"));
 });
 
-test('popover entries bind to the shadow root that actually owns their DOM', () => {
-  const markup = source.match(/sidebarCard\.innerHTML = \`([\s\S]*?)\`;/);
-  assert.ok(markup, 'sidebarCard HTML template is defined');
-  const nodes = source.match(/const nodes = \{([\s\S]*?)\n  \};/);
-  assert.ok(nodes, 'nodes map is defined');
+test('popover nodes resolve from their own Shadow DOM to avoid initialization crash', () => {
+  const markup = source.slice(source.indexOf('sidebarCard.innerHTML = '), source.indexOf('// Popover and its styling'));
+  const nodes = source.slice(source.indexOf('const nodes = {'), source.indexOf('  function syncTheme()'));
   const names = {
     sidebarPlan: 'sidebar-plan',
     sidebarFive: 'sidebar-five',
@@ -242,24 +241,12 @@ test('popover entries bind to the shadow root that actually owns their DOM', () 
     sidebarRefresh: 'sidebar-refresh',
   };
   for (const [name, id] of Object.entries(names)) {
-    assert.ok(markup[1].includes('id="' + id + '"'), 'popup has ' + id);
-    assert.ok(nodes[1].includes(name + ": popupShadow.getElementById('" + id + "')"),
-      name + ' must use popupShadow (regression: initial render TypeError)');
+    assert.ok(markup.includes('id="' + id + '"'), 'popup contains ' + id);
+    assert.ok(nodes.includes(name + ": popupShadow.getElementById('" + id + "')"),
+      name + ' must resolve from popupShadow');
   }
-  assert.match(source, /popupShadow\.append\(css\.cloneNode\(true\), sidebarCard\)/);
-  assert.doesNotMatch(nodes[1], /sidebar(?:Plan|Five|Week|Credits): \$\(/);
+  assert.ok(source.includes('popupShadow.append(css.cloneNode(true), sidebarCard)'));
 });
-
-test('native sidebar-style row is measured against the profile rather than the viewport edge', () => {
-  assert.match(source, /function alignSidebarTrigger\(profileButton\)/);
-  assert.match(source, /profileButton\.getBoundingClientRect\(\)/);
-  assert.match(source, /sidebarAlignment\(avatarLeft, avatarWidth, nameLeft, host\.left, 36\)/);
-  assert.match(source, /root\.style\.setProperty\('--cg-icon-indent', indent\)/);
-  assert.match(source, /width:100%; height:44px/);
-  assert.match(source, /class="sidebar-trigger-label">额度<\/span>/);
-  assert.doesNotMatch(source, /padding:0 8px 7px 19px/);
-});
-
 
 const alignmentStart = source.indexOf('// BEGIN SIDEBAR_ALIGNMENT');
 const alignmentEnd = source.indexOf('// END SIDEBAR_ALIGNMENT');
@@ -267,43 +254,61 @@ assert.ok(alignmentStart >= 0 && alignmentEnd > alignmentStart);
 const { sidebarAlignment } = runInNewContext(
   source.slice(alignmentStart, alignmentEnd) + '\n({ sidebarAlignment })'
 );
-test('icon and label horizontally match the actual account avatar and name', () => {
-  // screenshot geometry: avatar x28–64, username begins x80; host starts x7.
-  const aligned = sidebarAlignment(28, 36, 80, 7, 36);
-  assert.equal(aligned.indent, 21);
-  assert.equal(aligned.gap, 16);
-  assert.equal(7 + aligned.indent, 28);
-  assert.equal(7 + aligned.indent + 36 + aligned.gap, 80);
+test('account avatar center and username x-position independently determine icon and label', () => {
+  // Screenshot: account avatar x32..68, name x80, sidebar host x8.
+  const aligned = sidebarAlignment(50, 80, 8, 28);
+  assert.equal(aligned.ringLeft, 28);
+  assert.equal(aligned.labelLeft, 72);
+  assert.equal(8 + aligned.ringLeft + 14, 50);
+  assert.equal(8 + aligned.labelLeft, 80);
 });
-test('alignment handles differently sized avatars without hardcoded +12px guesses', () => {
-  const aligned = sidebarAlignment(35, 32, 81, 12, 36);
-  assert.equal(aligned.indent, 21);
-  assert.equal(aligned.gap, 12);
-  assert.match(source, /locateProfileAvatar\(profileButton\)/);
-  assert.match(source, /locateProfileNameLeft\(profileButton, avatarLeft \+ avatarWidth\)/);
-  assert.match(source, /root\.style\.setProperty\('--cg-icon-gap', gap\)/);
-  assert.doesNotMatch(source, /profile\.left \+ 12/);
+test('missing avatar falls back to measured username, not arbitrary account-button x', () => {
+  assert.ok(source.includes('locateProfileAvatar(profileButton)'));
+  assert.ok(source.includes('locateProfileNameLeft(profileButton'));
+  assert.ok(source.includes('nameLeft !== null ? nameLeft - 30 : profile.left + 18'));
+  assert.ok(source.includes("root.style.setProperty('--cg-ring-left', ringLeft)"));
+  assert.ok(source.includes("root.style.setProperty('--cg-label-left', labelLeft)"));
+  assert.ok(!source.includes("'--cg-icon-gap'"));
+  assert.ok(!source.includes("'--cg-icon-indent'"));
+});
+test('clamps offsets for narrow sidebar variants', () => {
+  const aligned = sidebarAlignment(12, 42, 40, 28);
+  assert.equal(aligned.ringLeft, 0);
+  assert.equal(aligned.labelLeft, 32);
 });
 
-test('both quota arcs follow one precise circle rather than jagged line segments', () => {
-  const markup = source.match(/trigger\.innerHTML = \`([\s\S]*?)\`;/);
-  assert.ok(markup, 'SVG markup exists');
-  const paths = [...markup[1].matchAll(/<path class="quota-ring-(?:track|progress)"[^>]*?\sd="([^"]+)"/g)]
-    .map(match => match[1]);
-  assert.equal(paths.length, 4);
-  assert.equal(paths[0], paths[1]);
-  assert.equal(paths[2], paths[3]);
-  assert.equal(paths[0], 'M9.65 6.51 A14.2 14.2 0 0 1 26.35 6.51');
-  assert.equal(paths[2], 'M29.49 9.65 A14.2 14.2 0 1 1 6.51 9.65');
-  assert.ok(!paths.some(p => /[LCVHZQ]/.test(p)), 'arcs cannot contain line segments');
-  assert.match(markup[1], /cx="18" cy="18" r="14\.2"/);
-  assert.match(markup[1], /id="quota-ring-week-single"/);
+test('both progress tracks and their consumed portions follow true circular paths', () => {
+  const markup = source.slice(source.indexOf('trigger.innerHTML = '), source.indexOf('shadow.append(trigger)'));
+  const expectedTop = 'M9.65 6.51 A14.2 14.2 0 0 1 26.35 6.51';
+  const expectedBottom = 'M29.49 9.65 A14.2 14.2 0 1 1 6.51 9.65';
+  for (const type of ['track', 'progress', 'used']) {
+    assert.ok(markup.includes('class="quota-ring-' + type + '"'), type + ' exists');
+  }
+  assert.equal(markup.split('d="' + expectedTop + '"').length - 1, 3);
+  assert.equal(markup.split('d="' + expectedBottom + '"').length - 1, 3);
+  assert.ok(markup.includes('id="quota-ring-week-single-used"'));
+  assert.ok(markup.includes('cx="18" cy="18" r="14.2"'));
 });
-test('the trigger uses the account row geometry instead of independent positioning', () => {
-  assert.ok(source.includes('width:100%; height:44px'));
-  assert.ok(source.includes('gap:var(--cg-icon-gap, 12px)'));
-  assert.ok(source.includes('line-height:20px'));
-  assert.ok(source.includes('profileButton.querySelectorAll'));
-  assert.ok(source.includes('document.createRange()'));
-  assert.ok(source.includes('avatar?.left ?? profile.left'));
+
+test('uses actual consumed percentages and marks small usage in contrasting color', () => {
+  const render = source.slice(source.indexOf('function renderQuotaIcon()'), source.indexOf('function renderSidebar()'));
+  assert.ok(render.includes('const used = 100 - remaining'));
+  assert.ok(render.includes('node.style.strokeDasharray ='));
+  assert.ok(render.includes('node.style.strokeDashoffset ='));
+  assert.ok(render.includes("node.style.opacity = used > 0 ? '1' : '0'"));
+  assert.ok(render.includes('setUsed(nodes.fiveUsedRing, fivePercent)'));
+  assert.ok(render.includes('setUsed(nodes.weekUsedRing, weekPercent)'));
+  assert.ok(render.includes('setUsed(nodes.weekFullUsedRing, weekPercent)'));
+  assert.ok(source.includes('--cg-ring-used:#ffb64d'));
+  assert.ok(source.includes('stroke-linecap:round'));
+  assert.equal(100 - quotaIconModel({remaining:92}, {remaining:99}).fivePercent, 8);
+  assert.equal(100 - quotaIconModel({remaining:92}, {remaining:99}).weekPercent, 1);
+});
+
+test('preserves Work-only embedded meter and click-to-open normal chat popup', () => {
+  assert.ok(source.includes('workPanel ? null : locateSidebarInsertion()'));
+  assert.ok(source.includes('root.dataset.placement = placement'));
+  assert.ok(source.includes('document.body.appendChild(popupRoot)'));
+  assert.ok(source.includes('if (state.mode && state.mode !== placement) closePopup()'));
+  assert.ok(source.includes('if (!state.active || document.hidden || state.loading) return;'));
 });
