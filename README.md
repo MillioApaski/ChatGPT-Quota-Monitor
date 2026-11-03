@@ -68,3 +68,22 @@ CI 将检查脚本语法、额度解析测试及 Tampermonkey 更新元数据。
 ### v1.3.5 侧栏挂载修复
 
 针对额度按钮在 ChatGPT 网页侧栏消失的问题，放宽账户按钮识别条件：支持 `data-testid` 被修改以及账户按钮属性变化，检测时同时确认它位于可见的展开侧栏底部。头像布局对齐现在有独立异常保护，即使前端修改导致头像样式读取失败，也不会阻止额度 UI 挂载和数据请求。新增真正启动 Chromium 的集成测试，覆盖正常侧栏、账户入口属性改变、头像读取异常三个场景。**上述为模拟网页测试，仍非真实登录 ChatGPT 的 DOM 验证。**
+
+### v1.3.6：CSP 兼容与运行状态诊断
+
+脚本改为 Tampermonkey `@sandbox DOM`（移除 `@grant none`），尽量在独立的 DOM 沙箱中执行，而非直接注入受网页 CSP 约束的页面脚本环境。不修改 ChatGPT 的安全策略。
+
+打开 F12 → Console，输入下面的命令查看运行阶段（**不会读取 Token 或账号资料**）：
+
+```js
+({
+  version: document.documentElement.dataset.cgQuotaMonitor ?? '未启动',
+  status: document.documentElement.dataset.cgQuotaState ?? '未知',
+  reason: document.documentElement.dataset.cgQuotaReason ?? '',
+  mounted: !!document.getElementById('cg-work-quota-root'),
+})
+```
+
+`未启动`：优先检查扩展、脚本是否启用以及执行权限；`profile-not-found`：脚本已运行，但未识别到可用的左侧栏账户按钮；`sidebar-mounted`：已挂载，若仍看不到则检查位置和样式；`mount-error`：挂载异常，查看 Console 中带 `[ChatGPT Quota Monitor]` 的错误。上述标记仅含脚本版本和状态，不包含凭证。
+
+**注意：** ChatGPT 开发者控制台中的 `runner.html` CSP 错误可能属于页面自身或其他脚本，不能只凭该信息认定额度脚本被阻止。依次检查运行标记可缩小排查范围。
