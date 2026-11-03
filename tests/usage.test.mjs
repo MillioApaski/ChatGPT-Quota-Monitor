@@ -94,7 +94,7 @@ test('mounts exactly one display in Work or expanded sidebar', () => {
   assert.match(source, /if \(!state\.popupOpen \|\| !popupRoot\.isConnected\) return;/);
   assert.doesNotMatch(source, /document\.documentElement\.append\(root\)/);
   assert.match(source, /workPanel \? null : locateSidebarInsertion\(\)/);
-  assert.match(source, /if \(!workPanel && !sidebar\) \{ deactivate\(\); return; \}/);
+  assert.match(source, /if \(!workPanel && !sidebar\) \{\s*setDiagnostic\('profile-not-found'\);\s*deactivate\(\);\s*return;\s*\}/);
   assert.match(source, /root\.dataset\.placement = placement/);
   assert.match(source, /if \(!state\.active \|\| document\.hidden \|\| state\.loading\) return;/);
   assert.match(source, /observer\.observe\(document\.body, \{ childList: true, subtree: true \}\)/);
