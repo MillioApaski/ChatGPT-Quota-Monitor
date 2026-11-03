@@ -221,8 +221,42 @@ test('empty limits never masquerade as full/empty usage; percentages are clamped
 });
 test('quota ring matches desktop diamond layout and native sidebar alignment', () => {
   assert.match(source, /quota-ring-diamond/);
-  assert.match(source, /padding:0 8px 7px 19px/);
+  assert.match(source, /padding:3px 10px 3px var\\(--cg-icon-indent, 16px\\)/);
+  assert.match(source, /alignSidebarTrigger\\(sidebar\\.profileButton\\)/);
+  assert.match(source, /class="sidebar-trigger-label">额度<\\/span>/);
   assert.match(source, /svg class="quota-icon" viewBox="0 0 36 36"/);
   assert.match(source, /popup opens beside the nav/);
   assert.match(source, /aria-label', label/);
+});
+
+
+test('popover entries bind to the shadow root that actually owns their DOM', () => {
+  const markup = source.match(/sidebarCard\.innerHTML = \`([\s\S]*?)\`;/);
+  assert.ok(markup, 'sidebarCard HTML template is defined');
+  const nodes = source.match(/const nodes = \{([\s\S]*?)\n  \};/);
+  assert.ok(nodes, 'nodes map is defined');
+  const names = {
+    sidebarPlan: 'sidebar-plan',
+    sidebarFive: 'sidebar-five',
+    sidebarWeek: 'sidebar-week',
+    sidebarCredits: 'sidebar-credits',
+    sidebarRefresh: 'sidebar-refresh',
+  };
+  for (const [name, id] of Object.entries(names)) {
+    assert.ok(markup[1].includes('id="' + id + '"'), 'popup has ' + id);
+    assert.ok(nodes[1].includes(name + ": popupShadow.getElementById('" + id + "')"),
+      name + ' must use popupShadow (regression: initial render TypeError)');
+  }
+  assert.match(source, /popupShadow\.append\(css\.cloneNode\(true\), sidebarCard\)/);
+  assert.doesNotMatch(nodes[1], /sidebar(?:Plan|Five|Week|Credits): \$\(/);
+});
+
+test('native sidebar-style row is measured against the profile rather than the viewport edge', () => {
+  assert.match(source, /function alignSidebarTrigger\(profileButton\)/);
+  assert.match(source, /profileButton\.getBoundingClientRect\(\)/);
+  assert.match(source, /avatarLeft - host\.left/);
+  assert.match(source, /root\.style\.setProperty\('--cg-icon-indent', cssValue\)/);
+  assert.match(source, /width:100%; height:44px/);
+  assert.match(source, /class="sidebar-trigger-label">额度<\/span>/);
+  assert.doesNotMatch(source, /padding:0 8px 7px 19px/);
 });
