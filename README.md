@@ -87,3 +87,20 @@ CI 将检查脚本语法、额度解析测试及 Tampermonkey 更新元数据。
 `未启动`：优先检查扩展、脚本是否启用以及执行权限；`profile-not-found`：脚本已运行，但未识别到可用的左侧栏账户按钮；`sidebar-mounted`：已挂载，若仍看不到则检查位置和样式；`mount-error`：挂载异常，查看 Console 中带 `[ChatGPT Quota Monitor]` 的错误。上述标记仅含脚本版本和状态，不包含凭证。
 
 **注意：** ChatGPT 开发者控制台中的 `runner.html` CSP 错误可能属于页面自身或其他脚本，不能只凭该信息认定额度脚本被阻止。依次检查运行标记可缩小排查范围。
+
+### v1.3.7：修复账户入口识别失败
+
+针对 `profile-not-found`，现在分两步查找：优先识别左侧账户按钮（不再强制要求它的某个祖先是特定尺寸的导航容器）；如果页面把账户入口改为普通 `div`，则从**侧栏底部可见的套餐文本**（Plus / Pro 等）反向寻找包含头像的账户区域。已经找到且仍连接的账户节点会优先复用，避免插入额度菜单行后触发布局变化导致挂载抖动。
+
+如果仍提示 `profile-not-found`，运行：
+
+```js
+({
+  version: document.documentElement.dataset.cgQuotaMonitor,
+  state: document.documentElement.dataset.cgQuotaState,
+  details: document.documentElement.dataset.cgQuotaReason,
+  visible: !!document.getElementById('cg-work-quota-root')
+})
+```
+
+`details` 只含目标元素数量、位置匹配数与套餐文本命中数，不包含用户名、凭证、Cookie 等个人信息。项目的 Chromium 集成测试新增了无 `button`、无 `role`、无 `data-testid` 的账户区域场景。
