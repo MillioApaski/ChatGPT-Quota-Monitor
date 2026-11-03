@@ -12,6 +12,13 @@ html,body {margin:0;width:100%;height:100%;background:#0f0f0f;color:#eee;font-fa
 #result {position:absolute;left:360px;top:40px;white-space:pre-wrap}
 </style>
 <script>
+window.__quotaShadowRoots = new WeakMap();
+const originalAttachShadow = Element.prototype.attachShadow;
+Element.prototype.attachShadow = function(init) {
+ const shadow = originalAttachShadow.call(this, init);
+ window.__quotaShadowRoots.set(this, shadow);
+ return shadow;
+};
 window.__quotaFetches = [];
 window.__quotaErrors = [];
 window.onerror = function(message,source,line,column,error){window.__quotaErrors.push(String(message)+":"+line+":"+column)};
@@ -56,17 +63,44 @@ if(params.has('bad-avatar')){
 <script>
 function check() {
  const root=document.getElementById("cg-work-quota-root");
- const profile=document.getElementById('profile-button');
+ const profile=document.getElementById("profile-button");
+ const shadow=window.__quotaShadowRoots.get(root);
+ const trigger=shadow?.getElementById("sidebar-trigger");
+ const icon=shadow?.querySelector(".quota-icon");
+ const label=shadow?.querySelector(".sidebar-trigger-label");
+ const avatar=profile?.querySelector(".avatar");
+ const username=profile?.querySelector(".user > span");
+ const rect=el=>el?.getBoundingClientRect()??null;
+ const rRoot=rect(root),rTrigger=rect(trigger),rIcon=rect(icon);
+ const rLabel=rect(label),rAvatar=rect(avatar),rUsername=rect(username);
+ const errors=[...window.__quotaErrors];
+ let popupOpens=false, popupCloses=false;
+ try {
+   if(trigger) {
+     trigger.click();
+     popupOpens=!!document.getElementById("cg-quota-popup");
+     trigger.click();
+     popupCloses=!document.getElementById("cg-quota-popup");
+   }
+ } catch(error) {errors.push(String(error));}
  const result={
   rootExists:!!root,
   rootConnected:!!root?.isConnected,
   placement:root?.dataset.placement??"none",
   rootParent:root?.parentElement?.tagName??"none",
-  rootRect:root?.getBoundingClientRect().toJSON()??null,
-  profileRect:profile?.getBoundingClientRect().toJSON(),
+  rootRect:rRoot?.toJSON()??null,
+  triggerRect:rTrigger?.toJSON()??null,
+  triggerVisible:!!rTrigger && rTrigger.width>=30 && rTrigger.height>=30 &&
+    getComputedStyle(trigger).display!=="none" && getComputedStyle(root).display!=="none",
+  iconCenter:rIcon?rIcon.x+rIcon.width/2:null,
+  avatarCenter:rAvatar?rAvatar.x+rAvatar.width/2:null,
+  labelLeft:rLabel?.x??null,
+  usernameLeft:rUsername?.x??null,
+  popupOpens,popupCloses,
+  profileRect:rect(profile)?.toJSON(),
   usageFetchCount:window.__quotaFetches.filter(x=>x.includes("/usage")).length,
   sessionFetchCount:window.__quotaFetches.filter(x=>x.includes("/session")).length,
-  exceptions:window.__quotaErrors
+  exceptions:errors
  };
  document.getElementById("result").textContent=JSON.stringify(result);
  document.body.dataset.smokeResult=JSON.stringify(result);
