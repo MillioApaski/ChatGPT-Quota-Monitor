@@ -221,7 +221,7 @@ test('empty limits never masquerade as full/empty usage; percentages are clamped
 });
 test('quota ring matches desktop diamond layout and native sidebar alignment', () => {
   assert.match(source, /quota-ring-diamond/);
-  assert.ok(source.includes('padding:3px 10px 3px var(--cg-icon-indent, 16px)'));
+  assert.ok(source.includes('padding:4px 8px 4px var(--cg-icon-indent, 16px)'));
   assert.ok(source.includes('alignSidebarTrigger(sidebar.profileButton)'));
   assert.ok(source.includes('class="sidebar-trigger-label">额度</span>'));
   assert.ok(source.includes('svg class="quota-icon" viewBox="0 0 36 36"'));
@@ -253,9 +253,57 @@ test('popover entries bind to the shadow root that actually owns their DOM', () 
 test('native sidebar-style row is measured against the profile rather than the viewport edge', () => {
   assert.match(source, /function alignSidebarTrigger\(profileButton\)/);
   assert.match(source, /profileButton\.getBoundingClientRect\(\)/);
-  assert.match(source, /avatarLeft - host\.left/);
+  assert.match(source, /sidebarAlignment\(avatarLeft, avatarWidth, nameLeft, host\.left, 36\)/);
   assert.match(source, /root\.style\.setProperty\('--cg-icon-indent', cssValue\)/);
   assert.match(source, /width:100%; height:44px/);
   assert.match(source, /class="sidebar-trigger-label">额度<\/span>/);
   assert.doesNotMatch(source, /padding:0 8px 7px 19px/);
+});
+
+
+const alignmentStart = source.indexOf('// BEGIN SIDEBAR_ALIGNMENT');
+const alignmentEnd = source.indexOf('// END SIDEBAR_ALIGNMENT');
+assert.ok(alignmentStart >= 0 && alignmentEnd > alignmentStart);
+const { sidebarAlignment } = runInNewContext(
+  source.slice(alignmentStart, alignmentEnd) + '\n({ sidebarAlignment })'
+);
+test('icon and label horizontally match the actual account avatar and name', () => {
+  // screenshot geometry: avatar x28–64, username begins x80; host starts x7.
+  const aligned = sidebarAlignment(28, 36, 80, 7, 36);
+  assert.equal(aligned.indent, 21);
+  assert.equal(aligned.gap, 16);
+  assert.equal(7 + aligned.indent, 28);
+  assert.equal(7 + aligned.indent + 36 + aligned.gap, 80);
+});
+test('alignment handles differently sized avatars without hardcoded +12px guesses', () => {
+  const aligned = sidebarAlignment(35, 32, 81, 12, 36);
+  assert.equal(aligned.indent, 21);
+  assert.equal(aligned.gap, 12);
+  assert.match(source, /locateProfileAvatar\(profileButton\)/);
+  assert.match(source, /locateProfileNameLeft\(profileButton, avatarLeft \+ avatarWidth\)/);
+  assert.match(source, /root\.style\.setProperty\('--cg-icon-gap', gap\)/);
+  assert.doesNotMatch(source, /profile\.left \+ 12/);
+});
+
+test('both quota arcs follow one precise circle rather than jagged line segments', () => {
+  const markup = source.match(/trigger\.innerHTML = \`([\s\S]*?)\`;/);
+  assert.ok(markup, 'SVG markup exists');
+  const paths = [...markup[1].matchAll(/<path class="quota-ring-(?:track|progress)"[^>]*?d="([^"]+)"/g)]
+    .map(match => match[1]);
+  assert.equal(paths.length, 4);
+  assert.equal(paths[0], paths[1]);
+  assert.equal(paths[2], paths[3]);
+  assert.equal(paths[0], 'M9.65 6.51 A14.2 14.2 0 0 1 26.35 6.51');
+  assert.equal(paths[2], 'M29.49 9.65 A14.2 14.2 0 1 1 6.51 9.65');
+  assert.ok(!paths.some(p => /[LCVHZQ]/.test(p)), 'arcs cannot contain line segments');
+  assert.match(markup[1], /cx="18" cy="18" r="14\.2"/);
+  assert.match(markup[1], /id="quota-ring-week-single"/);
+});
+test('the trigger uses the account row geometry instead of independent positioning', () => {
+  assert.ok(source.includes('width:100%; height:44px'));
+  assert.ok(source.includes('gap:var(--cg-icon-gap, 12px)'));
+  assert.ok(source.includes('line-height:20px'));
+  assert.ok(source.includes('profileButton.querySelectorAll'));
+  assert.ok(source.includes('document.createRange()'));
+  assert.ok(source.includes('avatar?.left ?? profile.left'));
 });
