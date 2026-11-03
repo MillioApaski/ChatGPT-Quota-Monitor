@@ -46,7 +46,17 @@ window.fetch = async function(url,options) {
 <pre id="result">pending</pre>
 <script>
 const params=new URLSearchParams(location.search);
-const profileButton=document.getElementById('profile-button');
+let profileButton=document.getElementById('profile-button');
+if(params.has('plain-profile')){
+  // Recreate the account control as a plain div. No button, role, testid or
+  // menu attribute: only the bottom-left plan label and visible avatar remain.
+  const div=document.createElement('div');
+  div.className=profileButton.className;
+  div.id=profileButton.id;
+  div.innerHTML=profileButton.innerHTML;
+  profileButton.replaceWith(div);
+  profileButton=div;
+}
 if(params.has('no-testid')){
   profileButton.removeAttribute('data-testid');
   profileButton.removeAttribute('aria-haspopup');
