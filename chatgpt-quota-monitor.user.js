@@ -855,7 +855,8 @@
     // Do not silently hide the quota monitor if ChatGPT renames this one node.
     const targets = Array.from(document.querySelectorAll(
       '[data-testid="accounts-profile-button"],' +
-      'button[aria-haspopup="menu"],[role="button"][aria-haspopup="menu"]'
+      'button[aria-haspopup="menu"],[role="button"][aria-haspopup="menu"],' +
+      'button,[role="button"]'
     ));
     const usable = [];
     for (const candidate of targets) {
