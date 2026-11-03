@@ -2,7 +2,7 @@
 
 English | [简体中文](./README.md)
 
-A lightweight, dependency-free **Tampermonkey userscript** adding a compact quota **button above the account entry in the regular ChatGPT web sidebar**. Click it to open the desktop-inspired quota popup; it is hidden by default. In **Work** conversations, the existing **Output / Sources** meter stays on the right. Both use the same Work/Codex usage data.
+A lightweight, dependency-free **Tampermonkey userscript** adding a compact, live **two-arc quota button above the account entry in the regular ChatGPT web sidebar**. Click it to open the desktop-inspired quota popup; it is hidden by default. In **Work** conversations, the existing **Output / Sources** meter stays on the right. Both use the same Work/Codex usage data.
 
 > **Disclaimer:** Unofficial community project, not affiliated with OpenAI. It uses an **undocumented internal endpoint** that may change without notice. For authoritative numbers, use **ChatGPT Settings → Usage**.
 
@@ -11,7 +11,8 @@ A lightweight, dependency-free **Tampermonkey userscript** adding a compact quot
 - Classifies 5-hour and weekly windows by actual duration, regardless of the order of primary/secondary fields.
 - Displays the remaining percentage reported by the service; does not guess from the number of messages.
 - Updates countdown timers locally every second, and refreshes usage roughly every 60 seconds while visible.
-- Click-to-open desktop-style popup: only a small icon is visible in the expanded web sidebar until clicked. Shows plan source, 5-hour and weekly limits, optional credits, and a Manage usage link.
+- Desktop-style quota icon: the short upper arc tracks remaining 5-hour allowance; the long lower arc tracks remaining weekly allowance. If no 5-hour window exists, the weekly progress uses a complete ring. Unknown data is never displayed as 0 or 100%.
+- Click-to-open popup: only a compact icon aligned to the profile avatar is visible in the expanded web sidebar until clicked. Shows plan source, 5-hour and weekly limits, optional credits, and a Manage usage link.
 - Click the icon again, click outside, or press Escape to close. Popup stays within viewport and is removed when closed.
 - Existing collapsible Work Output / Sources quota section stays on the right, including progress bars and reset countdowns.
 - Only one placement is active at a time; no duplicate API polling. Hidden if the sidebar is collapsed or narrow.
@@ -57,7 +58,7 @@ GitHub Actions validates syntax, quota parsing, and userscript metadata. To publ
 
 ## Work UI compatibility
 
-The script recognizes Work from its Output / Sources headings and geometry. Otherwise, it looks for the expanded sidebar profile button (with a footer fallback) and inserts only a trigger button above it. The popup is portaled to document.body on demand, avoiding sidebar overflow clipping, and dismissed on navigation/Work transitions. These are not public DOM contracts and may change without notice. Live browser validation is still required.
+The script recognizes Work from its Output / Sources headings and geometry. Otherwise, it looks for the expanded sidebar profile button (with a footer fallback) and inserts only a trigger button above it. The popup is portaled to document.body on demand and opens beside the full sidebar to avoid clipping or covering the account menu, then is dismissed on navigation/Work transitions. These are not public DOM contracts and may change without notice. Live browser validation is still required.
 
 ## License and AI notice
 
