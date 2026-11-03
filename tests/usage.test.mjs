@@ -143,7 +143,8 @@ test('sidebar imitates desktop plan/limits/credits/manage-usage layout', () => {
   assert.match(source, /id="sidebar-credits"/);
   assert.match(source, /href="\/settings\/usage"/);
   assert.match(source, /\[data-testid="accounts-profile-button"\]/);
-  assert.match(source, /\[data-app-action-sidebar-scroll\]/);
+  assert.match(source, /function profileCandidate\(\)/);
+  assert.match(source, /function isInExpandedNavigation\(element\)/);
   assert.match(source, /nodes\.sidebarCredits\.textContent = creditText/);
 });
 
