@@ -288,7 +288,7 @@ test('alignment handles differently sized avatars without hardcoded +12px guesse
 test('both quota arcs follow one precise circle rather than jagged line segments', () => {
   const markup = source.match(/trigger\.innerHTML = \`([\s\S]*?)\`;/);
   assert.ok(markup, 'SVG markup exists');
-  const paths = [...markup[1].matchAll(/<path class="quota-ring-(?:track|progress)"[^>]*?d="([^"]+)"/g)]
+  const paths = [...markup[1].matchAll(/<path class="quota-ring-(?:track|progress)"[^>]*?\sd="([^"]+)"/g)]
     .map(match => match[1]);
   assert.equal(paths.length, 4);
   assert.equal(paths[0], paths[1]);
