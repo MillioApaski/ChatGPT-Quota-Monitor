@@ -11,8 +11,8 @@ A lightweight, dependency-free **Tampermonkey userscript** adding a native-sized
 - Classifies 5-hour and weekly windows by actual duration, regardless of the order of primary/secondary fields.
 - Displays the remaining percentage reported by the service; does not guess from the number of messages.
 - Updates countdown timers locally every second, and refreshes usage roughly every 60 seconds while visible.
-- Desktop-style quota icon: the short upper arc tracks remaining 5-hour allowance; the long lower arc tracks remaining weekly allowance. Both are true SVG circular arcs sharing the same center and radius. If no 5-hour window exists, the weekly progress uses a complete ring. Unknown data is never displayed as 0 or 100%.
-- Click-to-open popup: a native-sized **Quota** sidebar row independently aligns its progress ring and label with the actual account avatar and username positions. Click to show plan source, 5-hour and weekly limits, optional credits, and a Manage usage link.
+- Desktop-style quota icon: the short upper arc tracks remaining 5-hour allowance; the long lower arc tracks remaining weekly allowance. Both are true SVG circular arcs sharing the same center and radius. A contrasting amber segment shows consumed allowance; e.g. 92% remaining is 8% consumed, 99% remaining is 1% consumed. If no 5-hour window exists, the weekly progress uses a complete ring. Unknown data is never displayed as 0 or 100%.
+- Click-to-open popup: a native-sized **Quota** sidebar row independently aligns its smaller progress ring to the avatar center and its label to the username start using measured absolute offsets. Click to show plan source, 5-hour and weekly limits, optional credits, and a Manage usage link.
 - Click the icon again, click outside, or press Escape to close. Popup stays within viewport and is removed when closed.
 - Existing collapsible Work Output / Sources quota section stays on the right, including progress bars and reset countdowns.
 - Only one placement is active at a time; no duplicate API polling. Hidden if the sidebar is collapsed or narrow.
@@ -71,3 +71,7 @@ The popover contents are rendered inside a separate Shadow DOM. Previously the d
 ### v1.3.2 visual alignment
 
 The upper and lower quota indicators now use exact circular SVG arcs, not multi-segment paths. The button measures the real avatar and first username text position when mounted, aligning both icon center and label without guessing a CSS left offset. Static geometry and layout regression tests cover these placements. The site is unofficial and OpenAI can change its DOM at any time.
+
+### v1.3.3 indicator refinement
+
+The sidebar ring now explicitly draws used allowance in amber on top of the gray/remaining tracks. Used segments remain proportional rather than exaggerating low usage. The SVG is reduced to fit the avatar, while the icon center and text start are measured and positioned independently. Tests exercise the 92%/99% remaining example and missing quota windows.
