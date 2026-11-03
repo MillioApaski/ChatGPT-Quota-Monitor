@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         ChatGPT Quota Monitor (Work / Codex)
 // @namespace    https://github.com/MillioApaski/ChatGPT-Quota-Monitor
-// @version      1.3.6
+// @version      1.3.7
 // @author       ChatGPT (GPT-6)
 // @license      MIT
 // @homepageURL  https://github.com/MillioApaski/ChatGPT-Quota-Monitor
 // @supportURL   https://github.com/MillioApaski/ChatGPT-Quota-Monitor/issues
 // @updateURL    https://raw.githubusercontent.com/MillioApaski/ChatGPT-Quota-Monitor/main/chatgpt-quota-monitor.user.js
 // @downloadURL  https://raw.githubusercontent.com/MillioApaski/ChatGPT-Quota-Monitor/main/chatgpt-quota-monitor.user.js
-// @description  CSP兼容的侧栏额度监控，5h/周进度圆环与点击弹窗，支持挂载状态诊断。
+// @description  稳健识别侧栏账户区域并显示5h/周额度进度，支持运行状态与候选统计诊断。
 // @match        https://chatgpt.com/*
 // @run-at       document-idle
 // @sandbox      DOM
@@ -32,7 +32,7 @@
   const setDiagnostic = (status, reason = '') => {
     const html = document.documentElement;
     if (!html) return;
-    html.dataset.cgQuotaMonitor = '1.3.6';
+    html.dataset.cgQuotaMonitor = '1.3.7';
     html.dataset.cgQuotaState = status;
     if (reason) html.dataset.cgQuotaReason = String(reason).slice(0, 80);
     else delete html.dataset.cgQuotaReason;
@@ -866,33 +866,106 @@
     return false;
   }
 
-  function profileCandidate() {
-    // The data-testid is an internal detail that changes with UI releases.
-    // Do not silently hide the quota monitor if ChatGPT renames this one node.
-    const targets = Array.from(document.querySelectorAll(
-      '[data-testid="accounts-profile-button"],' +
-      'button[aria-haspopup="menu"],[role="button"][aria-haspopup="menu"],' +
-      'button,[role="button"]'
-    ));
-    const usable = [];
-    for (const candidate of targets) {
-      if (candidate.closest('[inert],[aria-hidden="true"],[hidden]')) continue;
-      const rect = candidate.getBoundingClientRect();
-      if (!looksLikeProfileLocation(rect, innerWidth, innerHeight)) continue;
-      if (!isInExpandedNavigation(candidate)) continue;
-      const style = getComputedStyle(candidate);
-      if (style.display === 'none' || style.visibility === 'hidden') continue;
-      const preferred = candidate.matches('[data-testid="accounts-profile-button"]');
-      const label = candidate.textContent?.trim() || '';
-      const plan = /\b(Plus|Pro|Free|Go|Business|Enterprise|Edu)\b/.test(label);
-      const circle = candidate.querySelector('img,[class*="avatar"],[data-testid*="avatar"]');
-      if (preferred || plan || (circle && label.length > 1)) {
-        usable.push({ candidate, score: (preferred ? 100 : 0) +
-          (plan ? 20 : 0) + (circle ? 5 : 0) + rect.width * .001 });
+  // Query both explicit account controls and non-button profile areas.
+  // ChatGPT changes role, tag name and data-testid between releases.
+  const PLAN_LABEL = /^(?:Plus|Pro|Free|Go|Business|Enterprise|Edu|Team)$/i;
+  let lastProfile = null;
+  let profileScanStats = { targets: 0, geometry: 0, nav: 0, eligible: 0, text: 0 };
+  function visibleProfileElement(element) {
+    if (!element?.isConnected ||
+        element.closest('[inert],[aria-hidden="true"],[hidden]')) return false;
+    const css = getComputedStyle(element);
+    return css.visibility !== 'hidden' && css.display !== 'none';
+  }
+
+  // BEGIN PROFILE_FALLBACK (pure functions, exercised in tests)
+  function accountRegionShape(rect, viewportWidth, viewportHeight) {
+    return rect.width >= 120 && rect.width <= 460 &&
+      rect.height >= 30 && rect.height <= 130 &&
+      rect.left >= -8 && rect.left <= 135 &&
+      rect.right <= Math.min(520, viewportWidth * .48) &&
+      rect.top >= viewportHeight * .48 &&
+      rect.top <= viewportHeight + 75 &&
+      rect.bottom >= viewportHeight * .60;
+  }
+  function scoreAccountRegion(rect, viewportHeight, avatarFound, textFound) {
+    return (avatarFound ? 30 : 0) + (textFound ? 20 : 0) +
+      Math.min(20, Math.max(0, rect.bottom / viewportHeight * 20)) -
+      Math.abs(rect.height - 60) * .03;
+  }
+  // END PROFILE_FALLBACK
+
+  function locateProfileByPlanText() {
+    // Use the plan label only as an anchor; never capture the actual username.
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let node, best = null, bestScore = -Infinity;
+    while ((node = walker.nextNode())) {
+      if (!PLAN_LABEL.test(node.nodeValue?.trim() || '')) continue;
+      if (root.contains(node.parentElement) || popupRoot.contains(node.parentElement)) continue;
+      const span = node.parentElement;
+      if (!span || !visibleProfileElement(span)) continue;
+      const labelRect = span.getBoundingClientRect();
+      if (labelRect.left < -8 || labelRect.left > 240 ||
+          labelRect.top < innerHeight * .55 || labelRect.top > innerHeight + 20 ||
+          !labelRect.width || !labelRect.height) continue;
+      profileScanStats.text++;
+      for (let el = span.parentElement, depth = 0;
+           el && el !== document.body && depth < 8;
+           el = el.parentElement, depth++) {
+        const rect = el.getBoundingClientRect();
+        if (!accountRegionShape(rect, innerWidth, innerHeight)) continue;
+        if (!visibleProfileElement(el)) continue;
+        // Prefer the account row over the overall side navigation/footer.
+        const candidates = el.querySelectorAll('img,svg,[class*="avatar"],[data-testid*="avatar"]');
+        const hasVisual = Array.from(candidates).some(candidate => {
+          const r = candidate.getBoundingClientRect();
+          return r.width >= 18 && r.width <= 65 &&
+            r.left >= rect.left && r.left <= labelRect.left;
+        }) || el.querySelectorAll('*').length >= 2;
+        const score = scoreAccountRegion(rect, innerHeight, hasVisual, true) -
+          depth * .15;
+        if (score > bestScore) { bestScore = score; best = el; }
       }
     }
-    usable.sort((a,b) => b.score - a.score);
-    return usable[0]?.candidate || null;
+    return best;
+  }
+
+  function profileCandidate() {
+    const stats = profileScanStats = { targets: 0, geometry: 0, nav: 0, eligible: 0, text: 0 };
+    // Keep a successfully mounted profile if ChatGPT reflows it while the
+    // injected row occupies space; do not unmount the row on the next scan.
+    if (lastProfile?.isConnected && root.isConnected &&
+        visibleProfileElement(lastProfile)) return lastProfile;
+    const targets = document.querySelectorAll(
+      '[data-testid*="profile"],[data-testid*="account"],' +
+      'button[aria-haspopup="menu"],[role="button"][aria-haspopup="menu"],' +
+      'button,[role="button"]'
+    );
+    let best = null, bestScore = -Infinity;
+    stats.targets = targets.length;
+    for (const candidate of targets) {
+      if (!visibleProfileElement(candidate)) continue;
+      const rect = candidate.getBoundingClientRect();
+      if (!looksLikeProfileLocation(rect, innerWidth, innerHeight)) continue;
+      stats.geometry++;
+      const nav = isInExpandedNavigation(candidate);
+      if (nav) stats.nav++;
+      const preferred = candidate.matches('[data-testid="accounts-profile-button"]');
+      const label = candidate.textContent?.trim() || '';
+      const plan = /\b(Plus|Pro|Free|Go|Business|Enterprise|Edu|Team)\b/.test(label);
+      const circle = candidate.querySelector('img,[class*="avatar"],[data-testid*="avatar"]');
+      // The nav-ancestor check was too strict on the real ChatGPT sidebar.
+      // Prefer it but never make it a mandatory condition.
+      if (preferred || plan || (circle && label.length > 1)) {
+        stats.eligible++;
+        const score = (preferred ? 100 : 0) + (plan ? 30 : 0) +
+          (circle ? 8 : 0) + (nav ? 12 : 0) + rect.width * .001;
+        if (score > bestScore) { bestScore = score; best = candidate; }
+      }
+    }
+    if (!best) best = locateProfileByPlanText();
+    if (best) lastProfile = best;
+    return best;
   }
 
   function locateSidebarInsertion() {
@@ -922,7 +995,10 @@
     const workPanel = locateWorkPanel();
     const sidebar = workPanel ? null : locateSidebarInsertion();
     if (!workPanel && !sidebar) {
-      setDiagnostic('profile-not-found');
+      setDiagnostic('profile-not-found',
+        'targets=' + profileScanStats.targets + ',geometry=' + profileScanStats.geometry +
+        ',nav=' + profileScanStats.nav + ',eligible=' + profileScanStats.eligible +
+        ',planText=' + profileScanStats.text);
       deactivate();
       return;
     }
