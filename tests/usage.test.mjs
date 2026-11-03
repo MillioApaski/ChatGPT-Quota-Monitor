@@ -335,6 +335,20 @@ test('reconciles screenshot-like avatar and text drift without absolute pixel gu
   assert.ok(Math.abs(15 + layout.ringLeft + 14 - 56) <= 3.5);
   assert.ok(Math.abs(15 + layout.labelLeft - 87) <= 3.5);
 });
+
+test('reliable colored avatar is fixed while the username inset is corrected', () => {
+  // Screenshot: measured name x96, but the colored avatar's actual center is x57.
+  // Native account layout has 36px avatar and 12px gap -> username x87.
+  const anchors = reconcileProfileAnchors(57, 96, 36, true);
+  assert.equal(anchors.avatarCenter, 57);
+  assert.equal(anchors.nameLeft, 87);
+  const placed = sidebarAlignment(anchors.avatarCenter, anchors.nameLeft, 15, 28);
+  assert.equal(15 + placed.ringLeft + 14, 57);
+  assert.equal(15 + placed.labelLeft, 87);
+  assert.ok(source.includes('reliable: isImage || (round && chroma > .30)'));
+  assert.ok(source.includes('avatarRect?.width ?? 36, avatar?.reliable ?? false'));
+});
+
 test('reconciliation does not shift correctly aligned account rows or unsafe offsets', () => {
   assert.deepEqual({ ...reconcileProfileAnchors(56, 86, 36) },
     { avatarCenter: 56, nameLeft: 86 });
