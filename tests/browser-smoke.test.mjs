@@ -28,4 +28,11 @@ for (const variant of [
  assert.equal(status.sessionFetchCount,1,'initial render must start session fetch');
  assert.equal(status.usageFetchCount,1,'initial render must reach quota API');
  assert.deepEqual(status.exceptions,[],'no uncaught JavaScript exception during mount');
+ assert.equal(status.triggerVisible,true,'quota trigger must be visibly rendered');
+ assert.equal(status.popupOpens,true,'clicking quota icon must open popup');
+ assert.equal(status.popupCloses,true,'clicking the same icon must close popup');
+ assert.ok(Math.abs(status.iconCenter-status.avatarCenter)<=4,
+   'quota ring must align with profile avatar: '+JSON.stringify(status));
+ assert.ok(Math.abs(status.labelLeft-status.usernameLeft)<=6,
+   'quota label must align with username: '+JSON.stringify(status));
 });
