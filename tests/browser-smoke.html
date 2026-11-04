@@ -85,10 +85,29 @@ function check() {
  const rLabel=rect(label),rAvatar=rect(avatar),rUsername=rect(username);
  const errors=[...window.__quotaErrors];
  let popupOpens=false, popupCloses=false;
+ let fiveHoverTip=null, weekHoverTip=null, singleHoverTip=null;
+ let fiveHighlighted=false, weekHighlighted=false, tipDismisses=false;
+ let tooltipHiddenOnClick=false, unknownFiveHoverSuppressed=false;
  try {
+   const fiveHit=shadow?.getElementById('quota-hit-five');
+   const weekHit=shadow?.getElementById('quota-hit-week');
+   const weekSingleHit=shadow?.getElementById('quota-hit-week-single');
+   const svg=shadow?.querySelector('.quota-icon');
+   const tipText=()=>window.__quotaShadowRoots.get(
+     document.getElementById('cg-quota-hover-tip'))?.querySelector('.quota-tip')?.textContent ?? null;
+   fiveHit?.dispatchEvent(new PointerEvent('pointerenter', {bubbles:false,composed:true,pointerType:'mouse'}));
+   fiveHoverTip=tipText();
+   fiveHighlighted=svg?.dataset.hover==='five';
+   weekHit?.dispatchEvent(new PointerEvent('pointerenter', {bubbles:false,composed:true,pointerType:'mouse'}));
+   weekHoverTip=tipText();
+   weekHighlighted=svg?.dataset.hover==='week';
+   weekHit?.dispatchEvent(new PointerEvent('pointerleave', {bubbles:false,composed:true,pointerType:'mouse'}));
+   tipDismisses=!document.getElementById('cg-quota-hover-tip') && !svg?.dataset.hover;
    if(trigger) {
+     fiveHit?.dispatchEvent(new PointerEvent('pointerenter', {bubbles:false,composed:true,pointerType:'mouse'}));
      trigger.click();
      popupOpens=!!document.getElementById("cg-quota-popup");
+     tooltipHiddenOnClick=!document.getElementById("cg-quota-hover-tip");
      trigger.click();
      popupCloses=!document.getElementById("cg-quota-popup");
    }
@@ -107,6 +126,8 @@ function check() {
   labelLeft:rLabel?.x??null,
   usernameLeft:rUsername?.x??null,
   popupOpens,popupCloses,
+  fiveHoverTip,weekHoverTip,singleHoverTip,
+  fiveHighlighted,weekHighlighted,tipDismisses,tooltipHiddenOnClick,
   profileRect:rect(profile)?.toJSON(),
   usageFetchCount:window.__quotaFetches.filter(x=>x.includes("/usage")).length,
   sessionFetchCount:window.__quotaFetches.filter(x=>x.includes("/session")).length,
