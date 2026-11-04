@@ -1,6 +1,6 @@
 {
   "name": "chatgpt-quota-monitor",
-  "version": "1.3.7",
+  "version": "1.4.0",
   "private": true,
   "description": "Desktop-style 5h/weekly progress-ring trigger and quota popover for ChatGPT",
   "scripts": {
