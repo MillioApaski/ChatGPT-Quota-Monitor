@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         ChatGPT Quota Monitor (Work / Codex)
 // @namespace    https://github.com/MillioApaski/ChatGPT-Quota-Monitor
-// @version      1.3.7
+// @version      1.4.0
 // @author       ChatGPT (GPT-6)
 // @license      MIT
 // @homepageURL  https://github.com/MillioApaski/ChatGPT-Quota-Monitor
 // @supportURL   https://github.com/MillioApaski/ChatGPT-Quota-Monitor/issues
 // @updateURL    https://raw.githubusercontent.com/MillioApaski/ChatGPT-Quota-Monitor/main/chatgpt-quota-monitor.user.js
 // @downloadURL  https://raw.githubusercontent.com/MillioApaski/ChatGPT-Quota-Monitor/main/chatgpt-quota-monitor.user.js
-// @description  稳健识别侧栏账户区域并显示5h/周额度进度，支持运行状态与候选统计诊断。
+// @description  5小时与周额度独立悬停提示、高亮圆弧、点击查看详细用量；支持Work。
 // @match        https://chatgpt.com/*
 // @run-at       document-idle
 // @sandbox      DOM
@@ -32,13 +32,13 @@
   const setDiagnostic = (status, reason = '') => {
     const html = document.documentElement;
     if (!html) return;
-    html.dataset.cgQuotaMonitor = '1.3.7';
+    html.dataset.cgQuotaMonitor = '1.4.0';
     html.dataset.cgQuotaState = status;
     if (reason) html.dataset.cgQuotaReason = String(reason).slice(0, 80);
     else delete html.dataset.cgQuotaReason;
   };
   setDiagnostic('started');
-  console.info('[ChatGPT Quota Monitor] v1.3.6 started (DOM sandbox)');
+  console.info('[ChatGPT Quota Monitor] v1.4.0 started (DOM sandbox)');
 
   if (document.getElementById('cg-work-quota-root')) {
     setDiagnostic('duplicate-instance');
@@ -132,7 +132,32 @@
     .quota-ring-used { fill:none; stroke:var(--cg-ring-used); stroke-width:3;
       stroke-linecap:round; stroke-dasharray:0 100;
       transition:stroke-dasharray .25s ease, stroke-dashoffset .25s ease; }
-    .quota-ring-diamond { fill:var(--fg); opacity:.65; }
+    .quota-ring-diamond { fill:var(--fg); opacity:.65; pointer-events:none; }
+    /* SVG hit paths are wider than the visible strokes, and remain
+       independent for the upper 5-hour and lower weekly arcs. */
+    .quota-ring-hit { fill:none; stroke:transparent; stroke-width:8;
+      pointer-events:stroke; cursor:help; }
+    .quota-icon[data-hover="five"] .quota-ring-week-group,
+    .quota-icon[data-hover="week"] .quota-ring-five-group { opacity:.32; }
+    .quota-icon[data-hover="five"] .quota-ring-five-group .quota-ring-progress,
+    .quota-icon[data-hover="five"] .quota-ring-five-group .quota-ring-used,
+    .quota-icon[data-hover="week"] .quota-ring-week-group .quota-ring-progress,
+    .quota-icon[data-hover="week"] .quota-ring-week-group .quota-ring-used {
+      stroke-width:4.2; filter:drop-shadow(0 0 2px currentColor);
+    }
+    .quota-icon[data-hover="five"] .quota-ring-five-group .quota-ring-track,
+    .quota-icon[data-hover="week"] .quota-ring-week-group .quota-ring-track {
+      opacity:.62; stroke-width:3.6;
+    }
+    .quota-ring-five-group,.quota-ring-week-group { transition:opacity .16s ease; }
+    .quota-tip { display:inline-flex; align-items:center; padding:7px 12px;
+      min-height:28px; background:#303035; color:#fff; border-radius:11px;
+      box-shadow:0 5px 16px rgba(0,0,0,.28); border:1px solid rgba(255,255,255,.09);
+      font-size:12px; font-weight:600; line-height:1.25; white-space:nowrap;
+      font-variant-numeric:tabular-nums; }
+    @media (prefers-reduced-motion:reduce) {
+      .quota-ring-five-group,.quota-ring-week-group { transition:none; }
+    }
     .quota-ring-single { display:none; }
     .quota-icon.single .quota-ring-dual { display:none; }
     .quota-icon.single .quota-ring-single { display:block; }
@@ -230,12 +255,18 @@
   // Using SVG elliptical A commands prevents the flat sides/visible kinks from v1.3.1.
   trigger.innerHTML = `<svg class="quota-icon" viewBox="0 0 36 36" aria-hidden="true">
     <g class="quota-ring-dual">
+      <g class="quota-ring-five-group">
       <path class="quota-ring-track" d="M9.65 6.51 A14.2 14.2 0 0 1 26.35 6.51" pathLength="100"/>
       <path class="quota-ring-progress" id="quota-ring-five" d="M9.65 6.51 A14.2 14.2 0 0 1 26.35 6.51" pathLength="100"/>
       <path class="quota-ring-used" id="quota-ring-five-used" d="M9.65 6.51 A14.2 14.2 0 0 1 26.35 6.51" pathLength="100"/>
+      <path class="quota-ring-hit" id="quota-hit-five" d="M9.65 6.51 A14.2 14.2 0 0 1 26.35 6.51"/>
+      </g>
+      <g class="quota-ring-week-group">
       <path class="quota-ring-track" d="M6.51 9.65 A14.2 14.2 0 1 0 29.49 9.65" pathLength="100"/>
       <path class="quota-ring-progress" id="quota-ring-week" d="M6.51 9.65 A14.2 14.2 0 1 0 29.49 9.65" pathLength="100"/>
       <path class="quota-ring-used" id="quota-ring-week-used" d="M6.51 9.65 A14.2 14.2 0 1 0 29.49 9.65" pathLength="100"/>
+      <path class="quota-ring-hit" id="quota-hit-week" d="M6.51 9.65 A14.2 14.2 0 1 0 29.49 9.65"/>
+      </g>
     </g>
     <g class="quota-ring-single">
       <circle class="quota-ring-track" cx="18" cy="18" r="14.2"/>
@@ -243,10 +274,34 @@
         pathLength="100" transform="rotate(-90 18 18)"/>
       <circle class="quota-ring-used" id="quota-ring-week-single-used" cx="18" cy="18" r="14.2"
         pathLength="100" transform="rotate(-90 18 18)"/>
+      <circle class="quota-ring-hit" id="quota-hit-week-single" cx="18" cy="18" r="14.2"/>
     </g>
     <path class="quota-ring-diamond" d="M18 13.4 22.6 18 18 22.6 13.4 18Z"/>
   </svg><span class="sidebar-trigger-label">额度</span>`;
   shadow.append(trigger);
+
+  // Tooltip is portaled outside the sidebar to avoid overflow clipping.
+  // It is never attached until an arc is hovered.
+  const hoverRoot = document.createElement('div');
+  hoverRoot.id = 'cg-quota-hover-tip';
+  hoverRoot.style.cssText = [
+    'position:fixed', 'z-index:2147483647',
+    'pointer-events:none', 'width:max-content', 'max-width:calc(100vw - 16px)',
+    'font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
+  ].join(';');
+  const hoverShadow = hoverRoot.attachShadow({ mode: 'closed' });
+  const hoverStyle = document.createElement('style');
+  hoverStyle.textContent = `
+    * { box-sizing:border-box; }
+    .quota-tip { display:inline-flex; align-items:center; padding:7px 12px;
+      min-height:28px; background:#303035; color:#fff; border-radius:11px;
+      box-shadow:0 5px 16px rgba(0,0,0,.28); border:1px solid rgba(255,255,255,.09);
+      font-size:12px; font-weight:600; line-height:1.25; white-space:nowrap;
+      font-variant-numeric:tabular-nums; }
+  `;
+  const hoverText = document.createElement('span');
+  hoverText.className = 'quota-tip';
+  hoverShadow.append(hoverStyle, hoverText);
 
   const $ = (id) => shadow.getElementById(id);
   const nodes = {
@@ -270,6 +325,9 @@
     fiveUsedRing: shadow.getElementById('quota-ring-five-used'),
     weekUsedRing: shadow.getElementById('quota-ring-week-used'),
     weekFullUsedRing: shadow.getElementById('quota-ring-week-single-used'),
+    fiveHit: shadow.getElementById('quota-hit-five'),
+    weekHit: shadow.getElementById('quota-hit-week'),
+    weekSingleHit: shadow.getElementById('quota-hit-week-single'),
     trigger,
   };
 
@@ -325,6 +383,7 @@
     scanTimer: null,
     popupOpen: false,
   };
+  let hoveredQuota = null;
 
   // BEGIN QUOTA_PARSER (kept pure for automated tests)
   function timestampMs(value) {
@@ -462,7 +521,10 @@
       ? `查看套餐额度：周额度剩余 ${describe(weekPercent)}`
       : `查看套餐额度：5 小时剩余 ${describe(fivePercent)}，周额度剩余 ${describe(weekPercent)}`;
     nodes.trigger.setAttribute('aria-label', label);
-    nodes.trigger.title = label;
+    // Native title bubbles conflict with the per-arc tooltip.
+    nodes.trigger.removeAttribute('title');
+    if (hoveredQuota === 'five' && layout === 'single') hideQuotaHover();
+    else if (hoveredQuota) updateQuotaHover();
   }
 
   function renderSidebar() {
@@ -644,6 +706,65 @@
     return null;
   }
 
+  // BEGIN QUOTA_HOVER_MODEL (pure helpers covered by tests)
+  function quotaHoverLabel(kind, five, week) {
+    const value = kind === 'five' ? five : week;
+    const name = kind === 'five' ? '5 小时' : '每周';
+    const remaining = Number.isFinite(value) ?
+      '剩余 ' + Math.round(Math.max(0, Math.min(100, value))) + '%' : '未提供';
+    return name + ' · ' + remaining;
+  }
+  function quotaTipPosition(anchor, tipWidth, tipHeight, vw, vh, kind) {
+    const gap = 10, edge = 8;
+    // Align the tip with upper vs lower arc to imitate the desktop app.
+    const centerY = anchor.top + anchor.height * (kind === 'five' ? .24 : .76);
+    const left = anchor.right + gap + tipWidth <= vw - edge
+      ? anchor.right + gap : Math.max(edge, anchor.left - tipWidth - gap);
+    const top = Math.max(edge, Math.min(vh - tipHeight - edge, centerY - tipHeight/2));
+    return { left, top };
+  }
+  // END QUOTA_HOVER_MODEL
+
+  function updateQuotaHover() {
+    if (!hoveredQuota || !state.active || state.mode !== 'sidebar' ||
+        document.hidden || state.popupOpen) { hideQuotaHover(); return; }
+    const { fivePercent, weekPercent } = quotaIconModel(
+      state.windows.five, state.windows.week
+    );
+    hoverText.textContent = quotaHoverLabel(hoveredQuota, fivePercent, weekPercent);
+    if (!hoverRoot.isConnected) document.body.appendChild(hoverRoot);
+    const anchor = nodes.ringIcon.getBoundingClientRect();
+    const tip = hoverRoot.getBoundingClientRect();
+    const pos = quotaTipPosition(anchor, tip.width, tip.height,
+      innerWidth, innerHeight, hoveredQuota);
+    hoverRoot.style.left = pos.left + 'px';
+    hoverRoot.style.top = pos.top + 'px';
+  }
+  function showQuotaHover(kind) {
+    if (!state.active || state.mode !== 'sidebar' || state.popupOpen) return;
+    const { layout } = quotaIconModel(state.windows.five, state.windows.week);
+    if (kind === 'five' && layout === 'single') return;
+    hoveredQuota = kind;
+    nodes.ringIcon.dataset.hover = kind;
+    updateQuotaHover();
+  }
+  function hideQuotaHover() {
+    hoveredQuota = null;
+    delete nodes.ringIcon.dataset.hover;
+    hoverRoot.remove();
+  }
+
+  nodes.fiveHit.addEventListener('pointerenter', () => showQuotaHover('five'));
+  nodes.weekHit.addEventListener('pointerenter', () => showQuotaHover('week'));
+  nodes.weekSingleHit.addEventListener('pointerenter', () => showQuotaHover('week'));
+  for (const hit of [nodes.fiveHit, nodes.weekHit, nodes.weekSingleHit]) {
+    hit.addEventListener('pointerleave', (event) => {
+      // When crossing directly between the two arcs, let the new hit enter.
+      hideQuotaHover();
+    });
+  }
+  nodes.trigger.addEventListener('pointerleave', hideQuotaHover);
+
   // BEGIN POPOVER_POSITION (pure helper covered by tests)
   function calculatePopoverPosition(anchor, popupWidth, popupHeight,
     viewportWidth, viewportHeight, sidebarEdge = anchor.right) {
@@ -692,6 +813,7 @@
   }
   function togglePopup() {
     if (!state.active || state.mode !== 'sidebar') return;
+    hideQuotaHover();
     if (state.popupOpen) { closePopup(); return; }
     state.popupOpen = true;
     nodes.trigger.setAttribute('aria-expanded', 'true');
@@ -713,8 +835,8 @@
       nodes.trigger.focus();
     }
   });
-  window.addEventListener('resize', positionPopup);
-  window.addEventListener('scroll', positionPopup, true);
+  window.addEventListener('resize', () => { positionPopup(); updateQuotaHover(); });
+  window.addEventListener('scroll', () => { positionPopup(); updateQuotaHover(); }, true);
 
   // BEGIN SIDEBAR_PREDICATES (pure helpers covered by tests)
   function isExpandedSidebarProfile(rect, viewportWidth, viewportHeight) {
@@ -979,6 +1101,7 @@
   }
 
   function deactivate() {
+    hideQuotaHover();
     closePopup();
     if (!state.active && !root.isConnected) return;
     state.active = false;
@@ -1005,7 +1128,10 @@
     const placement = workPanel ? 'work' : 'sidebar';
     const newlyActive = !state.active;
     // Switching between Work and regular chat always dismisses the popover.
-    if (state.mode && state.mode !== placement) closePopup();
+    if (state.mode && state.mode !== placement) {
+      hideQuotaHover();
+      closePopup();
+    }
     root.dataset.placement = placement;
     // 复用同一份数据和轮询定时器，避免 Work 与普通聊天重复请求。
     if (workPanel) {
@@ -1077,6 +1203,7 @@
   sidebarCard.setAttribute('role', 'dialog');
   sidebarCard.setAttribute('aria-label', 'ChatGPT 套餐用量');
   document.addEventListener('visibilitychange', () => {
+    if (document.hidden) hideQuotaHover();
     clearTimeout(state.timer);
     state.timer = null;
     if (!document.hidden) {
