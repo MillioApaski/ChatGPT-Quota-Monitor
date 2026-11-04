@@ -11,6 +11,7 @@ A lightweight, dependency-free **Tampermonkey userscript** adding a native-sized
 - Classifies 5-hour and weekly windows by actual duration, regardless of the order of primary/secondary fields.
 - Displays the remaining percentage reported by the service; does not guess from the number of messages.
 - Updates countdown timers locally every second, and refreshes usage roughly every 60 seconds while visible.
+- **Per-arc hover tooltips (v1.4.0)**: Hover the upper 5-hour arc or lower weekly arc separately to highlight that arc and see the matching remaining percentage in a compact tooltip. Invisible widened hit paths make targeting easier. In weekly-only mode, the entire ring is a single hover target. Click still opens the detailed popup.
 - Desktop-style quota icon: the short upper arc tracks remaining 5-hour allowance; the long lower arc tracks remaining weekly allowance. Both follow a consistent left-to-right progress direction. Both are true SVG circular arcs sharing the same center and radius. A contrasting amber segment shows consumed allowance; e.g. 92% remaining is 8% consumed, 99% remaining is 1% consumed. If no 5-hour window exists, the weekly progress uses a complete ring. Unknown data is never displayed as 0 or 100%.
 - Click-to-open popup: a native-sized **Quota** sidebar row independently aligns its smaller progress ring to the avatar center and its label to the username start using measured absolute offsets. Click to show plan source, 5-hour and weekly limits, optional credits, and a Manage usage link.
 - Click the icon again, click outside, or press Escape to close. Popup stays within viewport and is removed when closed.
@@ -91,3 +92,7 @@ The userscript now selects Tampermonkey `@sandbox DOM` and no longer uses `@gran
 ### v1.3.7 robust profile discovery
 
 A `profile-not-found` state no longer depends solely on ChatGPT's button tags and exact nav ancestor geometry. A conservative fallback scans the visible bottom-left plan label (e.g. Plus or Pro) and climbs to the account row, even when it is a plain div without role or testid. Mounted profiles are reused across layout changes. The safe `data-cg-quota-reason` diagnostics list counts, not names or credentials. The Chromium suite includes a plain-div account footer variant.
+
+### v1.4.0 independent arc hover
+
+The upper and lower SVG arcs now have separate widened invisible pointer targets. Hover highlights the selected arc and dims its counterpart; a small portal tooltip displays the corresponding live percentage. It dismisses when the pointer leaves, on popup click, on Work navigation, or when the page is hidden. For weekly-only accounts the full circular ring is one target. Chromium integration tests exercise actual pointer event dispatch and dismissal.
