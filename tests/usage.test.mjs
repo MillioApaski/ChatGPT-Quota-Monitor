@@ -287,8 +287,8 @@ test('both progress tracks and their consumed portions follow true circular path
   for (const type of ['track', 'progress', 'used']) {
     assert.ok(markup.includes('class="quota-ring-' + type + '"'), type + ' exists');
   }
-  assert.equal(markup.split('d="' + expectedTop + '"').length - 1, 3);
-  assert.equal(markup.split('d="' + expectedBottom + '"').length - 1, 3);
+  assert.equal(markup.split('d="' + expectedTop + '"').length - 1, 4);
+  assert.equal(markup.split('d="' + expectedBottom + '"').length - 1, 4);
   assert.ok(markup.includes('id="quota-ring-week-single-used"'));
   assert.ok(markup.includes('cx="18" cy="18" r="14.2"'));
 });
@@ -315,8 +315,8 @@ test('upper and lower rings progress left-to-right with used tails on the same s
   const sourcePart = source.slice(source.indexOf('trigger.innerHTML = '), source.indexOf('shadow.append(trigger)'));
   const top = 'M9.65 6.51 A14.2 14.2 0 0 1 26.35 6.51';
   const lower = 'M6.51 9.65 A14.2 14.2 0 1 0 29.49 9.65';
-  assert.equal(sourcePart.split('d="' + top + '"').length - 1, 3);
-  assert.equal(sourcePart.split('d="' + lower + '"').length - 1, 3);
+  assert.equal(sourcePart.split('d="' + top + '"').length - 1, 4);
+  assert.equal(sourcePart.split('d="' + lower + '"').length - 1, 4);
   assert.ok(sourcePart.includes('id="quota-ring-five-used"'));
   assert.ok(sourcePart.includes('id="quota-ring-week-used"'));
   assert.ok(sourcePart.includes('id="quota-ring-week-single-used"'));
@@ -404,7 +404,7 @@ test('script publishes safe diagnostic status even when no profile is found', ()
   assert.ok(source.includes("setDiagnostic('profile-not-found',"));
   assert.ok(source.includes("setDiagnostic('mount-error', error?.name || 'Error')"));
   assert.ok(source.includes("setDiagnostic(placement === 'work' ? 'work-mounted' : 'sidebar-mounted')"));
-  assert.ok(source.includes("html.dataset.cgQuotaMonitor = '1.3.7'"));
+  assert.ok(source.includes("html.dataset.cgQuotaMonitor = '1.4.0'"));
   assert.doesNotMatch(source, /dataset\.cgQuotaToken|dataset\.cgQuotaEmail/);
 });
 
@@ -436,4 +436,56 @@ test('fallback scans visible bottom-left plan labels instead of only buttons', (
   assert.ok(source.includes('if (lastProfile?.isConnected && root.isConnected'));
   assert.ok(source.includes("setDiagnostic('profile-not-found',"));
   assert.ok(source.includes('profileScanStats.targets'));
+});
+
+
+const hoverStart = source.indexOf('// BEGIN QUOTA_HOVER_MODEL');
+const hoverEnd = source.indexOf('// END QUOTA_HOVER_MODEL');
+assert.ok(hoverStart >= 0 && hoverEnd > hoverStart);
+const { quotaHoverLabel, quotaTipPosition } = runInNewContext(
+  source.slice(hoverStart, hoverEnd) + '\n({ quotaHoverLabel, quotaTipPosition })'
+);
+test('five-hour and weekly tooltip labels use different real remaining quota values', () => {
+  assert.equal(quotaHoverLabel('five', 84, 97), '5 小时 · 剩余 84%');
+  assert.equal(quotaHoverLabel('week', 84, 97), '每周 · 剩余 97%');
+  assert.equal(quotaHoverLabel('five', null, 97), '5 小时 · 未提供');
+  assert.equal(quotaHoverLabel('week', null, 97), '每周 · 剩余 97%');
+});
+test('tooltip positioning stays in viewport and aligns with arc height', () => {
+  const r={left:50,top:200,right:78,bottom:228,width:28,height:28};
+  const five=quotaTipPosition(r,130,29,1645,896,'five');
+  const week=quotaTipPosition(r,130,29,1645,896,'week');
+  assert.equal(five.left,88);
+  assert.equal(week.left,88);
+  assert.ok(five.top < week.top,'upper five-hour tooltip is higher than weekly tooltip');
+  assert.ok(quotaTipPosition({left:1630,right:1658,top:1,height:28},
+    140,29,1708,896,'week').left < 1630,'near right edge tooltip opens to the left');
+});
+test('SVG has independent and larger hit areas for both arcs and the single ring', () => {
+  for(const id of ['quota-hit-five','quota-hit-week','quota-hit-week-single']) {
+    assert.ok(source.includes('id="' + id + '"'), id+' is missing');
+  }
+  assert.match(source, /\.quota-ring-hit\s*\{[^}]*stroke:transparent;[^}]*stroke-width:8;[^}]*pointer-events:stroke/);
+  assert.ok(source.includes("nodes.fiveHit.addEventListener('pointerenter', () => showQuotaHover('five'))"));
+  assert.ok(source.includes("nodes.weekHit.addEventListener('pointerenter', () => showQuotaHover('week'))"));
+  assert.ok(source.includes("nodes.weekSingleHit.addEventListener('pointerenter', () => showQuotaHover('week'))"));
+});
+test('hover highlights only active arc, and normal click still opens details', () => {
+  assert.ok(source.includes('.quota-icon[data-hover="five"] .quota-ring-week-group'));
+  assert.ok(source.includes('.quota-icon[data-hover="week"] .quota-ring-five-group'));
+  assert.ok(source.includes("nodes.ringIcon.dataset.hover = kind"));
+  assert.ok(source.includes('hoverRoot.style.left = pos.left'));
+  assert.ok(source.includes("if (kind === 'five' && layout === 'single') return"));
+  assert.ok(source.includes("nodes.trigger.addEventListener('click'"));
+  assert.ok(source.includes('function togglePopup()'));
+  assert.match(source,/function togglePopup\(\) \{[^}]*hideQuotaHover\(\);/);
+  assert.ok(source.includes("nodes.trigger.removeAttribute('title')"));
+});
+test('tooltip removes itself during Work transitions, hidden page and unmount', () => {
+  assert.match(source, /function deactivate\(\) \{\s*hideQuotaHover\(\);/);
+  assert.match(source, /if \(state\.mode && state\.mode !== placement\) \{\s*hideQuotaHover\(\);/);
+  assert.ok(source.includes("if (document.hidden) hideQuotaHover()"));
+  assert.ok(source.includes("nodes.trigger.addEventListener('pointerleave', hideQuotaHover)"));
+  assert.ok(source.includes("hoverRoot.style.cssText"));
+  assert.ok(source.includes("'pointer-events:none'"));
 });
