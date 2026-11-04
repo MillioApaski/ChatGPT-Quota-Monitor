@@ -169,8 +169,8 @@ test('popup closes on outside pointer, Escape, and switching into Work', () => {
   assert.match(source, /event\.composedPath\(\)/);
   assert.match(source, /!path\.includes\(popupRoot\) && !path\.includes\(root\)/);
   assert.match(source, /event\.key === 'Escape' && state\.popupOpen/);
-  assert.match(source, /if \(state\.mode && state\.mode !== placement\) closePopup\(\)/);
-  assert.match(source, /function deactivate\(\) \{\s*closePopup\(\)/);
+  assert.match(source, /if \(state\.mode && state\.mode !== placement\) \{\s*hideQuotaHover\(\);\s*closePopup\(\);/);
+  assert.match(source, /function deactivate\(\) \{\s*hideQuotaHover\(\);\s*closePopup\(\)/);
 });
 test('popover opens beside the full sidebar, never directly over its button', () => {
   const anchor = {left:40, right:76, top:804, bottom:840};
@@ -372,7 +372,7 @@ test('preserves Work-only embedded meter and click-to-open normal chat popup', (
   assert.ok(source.includes('workPanel ? null : locateSidebarInsertion()'));
   assert.ok(source.includes('root.dataset.placement = placement'));
   assert.ok(source.includes('document.body.appendChild(popupRoot)'));
-  assert.ok(source.includes('if (state.mode && state.mode !== placement) closePopup()'));
+  assert.ok(source.includes('if (state.mode && state.mode !== placement) {'));
   assert.ok(source.includes('if (!state.active || document.hidden || state.loading) return;'));
 });
 
