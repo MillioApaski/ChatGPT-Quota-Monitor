@@ -9,6 +9,7 @@ for (const variant of [
   {query:'?no-testid=1',name:'renamed profile selector'},
   {query:'?bad-avatar=1',name:'profile avatar style exception'},
   {query:'?plain-profile=1',name:'plain div account row without button or role'},
+  {query:'?weekly-only=1',name:'weekly-only full-ring hover'},
 ]) test('real Chromium sidebar mount: '+variant.name, () => {
  const chromeCandidates=['/usr/bin/google-chrome','/usr/bin/chromium','/opt/google/chrome/chrome'];
  const chrome=chromeCandidates.find(p=>existsSync(p));
@@ -32,6 +33,20 @@ for (const variant of [
  assert.equal(status.triggerVisible,true,'quota trigger must be visibly rendered');
  assert.equal(status.popupOpens,true,'clicking quota icon must open popup');
  assert.equal(status.popupCloses,true,'clicking the same icon must close popup');
+ if(variant.query.includes('weekly-only')) {
+   assert.equal(status.unknownFiveHoverSuppressed,true,
+     'absent 5-hour quota must not have a live 5-hour hit area');
+   assert.equal(status.fiveHoverTip,null);
+   assert.equal(status.singleHoverTip,'每周 · 剩余 98%');
+   assert.equal(status.weekHighlighted,true);
+ } else {
+   assert.equal(status.fiveHoverTip,'5 小时 · 剩余 89%');
+   assert.equal(status.weekHoverTip,'每周 · 剩余 98%');
+   assert.equal(status.fiveHighlighted,true);
+   assert.equal(status.weekHighlighted,true);
+ }
+ assert.equal(status.tipDismisses,true,'pointerleave must remove tooltip and highlight');
+ assert.equal(status.tooltipHiddenOnClick,true,'click-to-open popup must hide hover tooltip');
  assert.ok(Math.abs(status.iconCenter-status.avatarCenter)<=4,
    'quota ring must align with profile avatar: '+JSON.stringify(status));
  assert.ok(Math.abs(status.labelLeft-status.usernameLeft)<=6,
